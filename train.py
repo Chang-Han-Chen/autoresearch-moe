@@ -389,6 +389,8 @@ class GPT(nn.Module):
         self.register_buffer("cos", cos, persistent=False)
         self.register_buffer("sin", sin, persistent=False)
         self.last_router_stats = {}
+        self.last_ce_loss = None
+        self.last_total_loss = None
 
     @torch.no_grad()
     def init_weights(self):
@@ -548,10 +550,11 @@ class GPT(nn.Module):
                 stats_by_key.setdefault(key, []).append(value)
 
         aux_loss = aux_loss / self.config.n_layer
-        self.last_router_stats = {
-            key: torch.stack(values).mean().detach()
-            for key, values in stats_by_key.items()
-        }
+        self.last_router_stats = {}
+        for key, values in stats_by_key.items():
+            layer_values = torch.stack(values).detach()
+            self.last_router_stats[f"layer_{key}"] = layer_values
+            self.last_router_stats[key] = layer_values.mean()
         self.last_router_stats["router_aux_loss"] = aux_loss.detach()
 
         x = norm(x)
@@ -570,7 +573,10 @@ class GPT(nn.Module):
             # The fixed BPB evaluator calls reduction='none'. Never add router
             # auxiliary losses to token-level eval CE.
             if reduction == "mean" and self.training:
-                return ce_loss + aux_loss
+                total_loss = ce_loss + aux_loss
+                self.last_ce_loss = ce_loss.detach()
+                self.last_total_loss = total_loss.detach()
+                return total_loss
             return ce_loss
         return logits
 
@@ -859,6 +865,65 @@ def maybe_all_reduce_mean(tensor):
     return tensor
 
 
+def reduce_router_stats(stats):
+    reduced = {}
+    for key, value in stats.items():
+        t = value.detach().float().clone()
+        if IS_DISTRIBUTED:
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+            t.div_(WORLD_SIZE)
+        reduced[key] = t
+
+    summary = {}
+    for key, value in reduced.items():
+        if value.numel() == 1 and not key.startswith("layer_"):
+            summary[key] = float(value.item())
+
+    def add_layer_summary(layer_key, mean_key=None, min_key=None, max_key=None, old_key=None):
+        values = reduced.get(layer_key)
+        if values is None:
+            return
+        mean_value = float(values.mean().item())
+        if old_key is not None:
+            summary[old_key] = mean_value
+        if mean_key is not None:
+            summary[mean_key] = mean_value
+        if min_key is not None:
+            summary[min_key] = float(values.min().item())
+        if max_key is not None:
+            summary[max_key] = float(values.max().item())
+
+    add_layer_summary(
+        "layer_router_entropy",
+        mean_key="mean_router_entropy",
+        min_key="min_layer_router_entropy",
+        old_key="router_entropy",
+    )
+    add_layer_summary(
+        "layer_expert_load_cv",
+        mean_key="mean_expert_load_cv",
+        max_key="max_layer_expert_load_cv",
+        old_key="expert_load_cv",
+    )
+    add_layer_summary(
+        "layer_max_expert_load",
+        mean_key="mean_max_expert_load",
+        max_key="max_layer_max_expert_load",
+        old_key="max_expert_load",
+    )
+    add_layer_summary(
+        "layer_router_z_loss",
+        mean_key="mean_router_z_loss",
+        max_key="max_layer_router_z_loss",
+        old_key="router_z_loss",
+    )
+
+    summary.setdefault("mean_router_bias_abs", 0.0)
+    summary.setdefault("max_router_bias_abs", 0.0)
+    summary.setdefault("max_layer_router_bias_abs", 0.0)
+    return summary
+
+
 # ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
@@ -868,22 +933,30 @@ smooth_train_loss = 0.0
 total_training_time = 0.0
 step = 0
 last_router_stats_for_summary = {}
+last_train_ce_loss_for_summary = float("nan")
+last_train_total_loss_for_summary = float("nan")
 
 while True:
     torch.cuda.synchronize(device)
     t0 = time.time()
 
     train_loss_for_log = None
+    train_ce_loss_for_log = None
+    train_total_loss_for_log = None
     for micro_step in range(grad_accum_steps):
         sync_ctx = model.no_sync() if IS_DISTRIBUTED and micro_step < grad_accum_steps - 1 else nullcontext()
         with sync_ctx:
             with autocast_ctx:
                 loss = model(x, y)
             train_loss_for_log = loss.detach()
+            train_ce_loss_for_log = raw_model.last_ce_loss
+            train_total_loss_for_log = raw_model.last_total_loss
             (loss / grad_accum_steps).backward()
         x, y, epoch = next(train_loader)
 
     train_loss_tensor = maybe_all_reduce_mean(train_loss_for_log.float())
+    train_ce_loss_tensor = maybe_all_reduce_mean(train_ce_loss_for_log.float())
+    train_total_loss_tensor = maybe_all_reduce_mean(train_total_loss_for_log.float())
 
     # Progress and schedules.
     progress = min(total_training_time / TRAIN_TIME_BUDGET, 1.0)
@@ -900,6 +973,8 @@ while True:
     model.zero_grad(set_to_none=True)
 
     train_loss_f = float(train_loss_tensor.item())
+    train_ce_loss_f = float(train_ce_loss_tensor.item())
+    train_total_loss_f = float(train_total_loss_tensor.item())
     bad = torch.tensor(
         [not math.isfinite(train_loss_f) or train_loss_f > 100],
         dtype=torch.int32,
@@ -935,16 +1010,11 @@ while True:
     remaining = max(0, TRAIN_TIME_BUDGET - total_training_time)
 
     stats = raw_model.last_router_stats
-    reduced_router_stats = {}
-    if stats:
-        for k, v in stats.items():
-            t = v.detach().float().clone()
-            if IS_DISTRIBUTED:
-                dist.all_reduce(t, op=dist.ReduceOp.SUM)
-                t.div_(WORLD_SIZE)
-            reduced_router_stats[k] = float(t.item())
+    reduced_router_stats = reduce_router_stats(stats) if stats else {}
 
     if IS_MASTER:
+        last_train_ce_loss_for_summary = train_ce_loss_f
+        last_train_total_loss_for_summary = train_total_loss_f
         last_router_stats_for_summary = reduced_router_stats
         ent = last_router_stats_for_summary.get("router_entropy", float("nan"))
         cv = last_router_stats_for_summary.get("expert_load_cv", float("nan"))
@@ -1029,7 +1099,27 @@ if IS_MASTER:
     print(f"num_experts:      {NUM_EXPERTS}")
     print(f"top_k:            {TOP_K}")
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
-    for key in ["router_entropy", "expert_load_cv", "max_expert_load", "router_z_loss", "router_lb_loss", "router_aux_loss"]:
+    print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
+    print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
+    for key in [
+        "router_entropy",
+        "mean_router_entropy",
+        "min_layer_router_entropy",
+        "expert_load_cv",
+        "mean_expert_load_cv",
+        "max_layer_expert_load_cv",
+        "max_expert_load",
+        "mean_max_expert_load",
+        "max_layer_max_expert_load",
+        "router_z_loss",
+        "mean_router_z_loss",
+        "max_layer_router_z_loss",
+        "mean_router_bias_abs",
+        "max_router_bias_abs",
+        "max_layer_router_bias_abs",
+        "router_lb_loss",
+        "router_aux_loss",
+    ]:
         if key in last_router_stats_for_summary:
             print(f"{key + ':':17s} {last_router_stats_for_summary[key]:.6f}")
 
