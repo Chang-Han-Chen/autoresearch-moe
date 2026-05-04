@@ -713,7 +713,7 @@ ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
 # Optimization. The optimizer algorithm is frozen; agents may tune LR values.
-TOTAL_BATCH_SIZE = 2**19       # global tokens per optimizer step, across all ranks
+TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ranks
 DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
 EMBEDDING_LR = 0.2
