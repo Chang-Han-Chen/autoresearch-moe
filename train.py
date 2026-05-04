@@ -409,7 +409,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(block.moe.router.weight, mean=0.0, std=1e-3)
             torch.nn.init.uniform_(block.moe.w_gate, -s, s)
             torch.nn.init.uniform_(block.moe.w_up, -s, s)
-            torch.nn.init.zeros_(block.moe.w_down)
+            torch.nn.init.trunc_normal_(block.moe.w_down, mean=0.0, std=0.02, a=-0.06, b=0.06)
 
         self.resid_lambdas.fill_(1.0)
         self.x0_lambdas.fill_(0.1)
