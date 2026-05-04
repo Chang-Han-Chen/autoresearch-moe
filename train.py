@@ -391,33 +391,36 @@ class GPT(nn.Module):
 
     @torch.no_grad()
     def init_weights(self):
-        init_std = INIT_STD
-        init_min = -3.0 * init_std
-        init_max = 3.0 * init_std
+        def init_weight(weight, d_in):
+            init_std = INIT_STD_GLOBAL / math.sqrt(d_in)
+            torch.nn.init.trunc_normal_(
+                weight,
+                mean=0.0,
+                std=init_std,
+                a=-3.0 * init_std,
+                b=3.0 * init_std,
+            )
 
-        def init_weight(weight):
-            torch.nn.init.trunc_normal_(weight, mean=0.0, std=init_std, a=init_min, b=init_max)
-
-        init_weight(self.transformer.wte.weight)
-        init_weight(self.lm_head.weight)
+        init_weight(self.transformer.wte.weight, self.config.n_embd)
+        init_weight(self.lm_head.weight, self.config.n_embd)
 
         for block in self.transformer.h:
-            init_weight(block.attn.c_q.weight)
-            init_weight(block.attn.c_k.weight)
-            init_weight(block.attn.c_v.weight)
-            init_weight(block.attn.c_proj.weight)
+            init_weight(block.attn.c_q.weight, self.config.n_embd)
+            init_weight(block.attn.c_k.weight, self.config.n_embd)
+            init_weight(block.attn.c_v.weight, self.config.n_embd)
+            init_weight(block.attn.c_proj.weight, self.config.n_embd)
             block.attn.qk_gamma.fill_(1.0)
 
-            init_weight(block.moe.router.weight)
-            init_weight(block.moe.w_gate)
-            init_weight(block.moe.w_up)
-            init_weight(block.moe.w_down)
+            init_weight(block.moe.router.weight, self.config.n_embd)
+            init_weight(block.moe.w_gate, self.config.n_embd)
+            init_weight(block.moe.w_up, self.config.n_embd)
+            init_weight(block.moe.w_down, self.config.moe_hidden_dim)
 
         for ve in self.value_embeds.values():
-            init_weight(ve.weight)
+            init_weight(ve.weight, ve.embedding_dim)
         for block in self.transformer.h:
             if block.attn.ve_gate is not None:
-                init_weight(block.attn.ve_gate.weight)
+                init_weight(block.attn.ve_gate.weight, block.attn.ve_gate_channels)
 
         head_dim = self.config.n_embd // self.config.n_head
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
@@ -730,7 +733,7 @@ ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
 # Optimization.
-INIT_STD = 0.02
+INIT_STD_GLOBAL = 1.0
 TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ranks
 DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
