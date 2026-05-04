@@ -725,7 +725,7 @@ ADAM_BETAS = (0.8, 0.95)
 WARMUP_RATIO = 0.02
 WARMDOWN_RATIO = 0.5
 FINAL_LR_FRAC = 0.0
-ENABLE_COMPILE = False         # dynamic sparse MoE first; compile is an experiment, not baseline
+ENABLE_COMPILE = True          # speed experiment: compile static model regions if sparse MoE permits it
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
