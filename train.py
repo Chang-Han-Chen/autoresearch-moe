@@ -78,11 +78,6 @@ def norm(x):
     return F.rms_norm(x, (x.size(-1),))
 
 
-def has_ve(layer_idx, n_layer):
-    """Use value embeddings on alternating layers, always including the last."""
-    return layer_idx % 2 == (n_layer - 1) % 2
-
-
 def apply_rotary_emb(x, cos, sin):
     assert x.ndim == 4
     d = x.shape[3] // 2
@@ -207,7 +202,7 @@ class GPTConfig:
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, config, layer_idx):
+    def __init__(self, config):
         super().__init__()
         self.n_head = config.n_head
         self.n_kv_head = config.n_kv_head
@@ -221,16 +216,11 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
 
-    def forward(self, x, ve, cos_sin, window_size):
+    def forward(self, x, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
-
-        # Value residual / value embedding: preserve early token value information.
-        if ve is not None:
-            ve = ve.view(B, T, self.n_kv_head, self.head_dim)
-            v = v + ve
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -348,13 +338,13 @@ class TokenChoiceMoE(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config, layer_idx):
+    def __init__(self, config):
         super().__init__()
-        self.attn = CausalSelfAttention(config, layer_idx)
+        self.attn = CausalSelfAttention(config)
         self.moe = TokenChoiceMoE(config)
 
-    def forward(self, x, ve, cos_sin, window_size):
-        x = x + self.attn(norm(x), ve, cos_sin, window_size)
+    def forward(self, x, cos_sin, window_size):
+        x = x + self.attn(norm(x), cos_sin, window_size)
         moe_out, aux_loss, stats = self.moe(norm(x))
         x = x + moe_out
         return x, aux_loss, stats
@@ -367,17 +357,11 @@ class GPT(nn.Module):
         self.window_sizes = self._compute_window_sizes(config)
         self.transformer = nn.ModuleDict({
             "wte": nn.Embedding(config.vocab_size, config.n_embd),
-            "h": nn.ModuleList([Block(config, i) for i in range(config.n_layer)]),
+            "h": nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
         })
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         head_dim = config.n_embd // config.n_head
-        kv_dim = config.n_kv_head * head_dim
-        self.value_embeds = nn.ModuleDict({
-            str(i): nn.Embedding(config.vocab_size, kv_dim)
-            for i in range(config.n_layer) if has_ve(i, config.n_layer)
-        })
-
         self.rotary_seq_len = config.sequence_len * 10
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
         self.register_buffer("cos", cos, persistent=False)
@@ -413,17 +397,12 @@ class GPT(nn.Module):
             init_weight(block.moe.w_up, self.config.n_embd)
             init_weight(block.moe.w_down, self.config.moe_hidden_dim)
 
-        for ve in self.value_embeds.values():
-            init_weight(ve.weight, ve.embedding_dim)
-
         head_dim = self.config.n_embd // self.config.n_head
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
         self.cos, self.sin = cos, sin
 
         # Match the dense baseline: embedding tables in bf16, compute under autocast.
         self.transformer.wte.to(dtype=torch.bfloat16)
-        for ve in self.value_embeds.values():
-            ve.to(dtype=torch.bfloat16)
 
     def _precompute_rotary_embeddings(self, seq_len, head_dim, base=10000, device=None):
         if device is None:
@@ -457,16 +436,14 @@ class GPT(nn.Module):
 
     def num_scaling_params(self):
         wte = sum(p.numel() for p in self.transformer.wte.parameters())
-        value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
         scalars = 0
-        total = wte + value_embeds + lm_head + transformer_matrices + scalars
+        total = wte + lm_head + transformer_matrices + scalars
         total_expert, active_expert = self.expert_param_counts()
         active = total - total_expert + active_expert
         return {
             "wte": wte,
-            "value_embeds": value_embeds,
             "lm_head": lm_head,
             "transformer_matrices": transformer_matrices,
             "expert_total": total_expert,
@@ -480,7 +457,7 @@ class GPT(nn.Module):
         """Estimated active FLOPs per token (forward + backward)."""
         counts = self.num_scaling_params()
         active_params = counts["active"]
-        nparams_exclude = counts["wte"] + counts["value_embeds"] + counts["scalars"]
+        nparams_exclude = counts["wte"] + counts["scalars"]
         h = self.config.n_head
         q = self.config.n_embd // self.config.n_head
         t = self.config.sequence_len
@@ -494,14 +471,12 @@ class GPT(nn.Module):
     def setup_optimizer(self, adamw_lr=0.003,
                         weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
         qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
-        value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
         param_groups = [
             dict(kind="adamw", params=lm_head_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
             dict(kind="adamw", params=embedding_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
-            dict(kind="adamw", params=value_embeds_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
             dict(kind="adamw", params=qk_gamma_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
         ]
 
@@ -533,7 +508,7 @@ class GPT(nn.Module):
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
-            len(value_embeds_params) + len(qk_gamma_params)
+            len(qk_gamma_params)
         )
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
@@ -551,8 +526,7 @@ class GPT(nn.Module):
         stats_by_key = {}
 
         for i, block in enumerate(self.transformer.h):
-            ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
-            x, block_aux, block_stats = block(x, ve, cos_sin, self.window_sizes[i])
+            x, block_aux, block_stats = block(x, cos_sin, self.window_sizes[i])
             aux_loss = aux_loss + block_aux
             for key, value in block_stats.items():
                 stats_by_key.setdefault(key, []).append(value)
@@ -566,10 +540,7 @@ class GPT(nn.Module):
         self.last_router_stats["router_aux_loss"] = aux_loss.detach()
 
         x = norm(x)
-        softcap = 15
-        logits = self.lm_head(x)
-        logits = logits.float()
-        logits = softcap * torch.tanh(logits / softcap)
+        logits = self.lm_head(x).float()
 
         if targets is not None:
             ce_loss = F.cross_entropy(
