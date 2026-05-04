@@ -496,12 +496,11 @@ class GPT(nn.Module):
         return 6 * (active_params - nparams_exclude) + attn_flops
 
     def setup_optimizer(self, unembedding_lr=0.003, embedding_lr=0.2, matrix_lr=0.02,
-                        router_lr=0.003, weight_decay=0.2, adam_betas=(0.8, 0.95), scalar_lr=0.5):
+                        weight_decay=0.2, adam_betas=(0.8, 0.95), scalar_lr=0.5):
         model_dim = self.config.n_embd
         qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
-        router_params = [block.moe.router.weight for block in self.transformer.h]
-        adam_transformer_param_ids = {id(p) for p in qk_gamma_params + router_params}
-        matrix_params = [p for p in self.transformer.h.parameters() if id(p) not in adam_transformer_param_ids]
+        qk_gamma_param_ids = {id(p) for p in qk_gamma_params}
+        matrix_params = [p for p in self.transformer.h.parameters() if id(p) not in qk_gamma_param_ids]
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
@@ -510,7 +509,7 @@ class GPT(nn.Module):
         assert len(list(self.parameters())) == (
             len(matrix_params) + len(embedding_params) + len(lm_head_params) +
             len(value_embeds_params) + len(resid_params) + len(x0_params) +
-            len(qk_gamma_params) + len(router_params)
+            len(qk_gamma_params)
         )
 
         # Scale AdamW LRs relative to the original 768-dim tuning point.
@@ -523,7 +522,6 @@ class GPT(nn.Module):
             dict(kind="adamw", params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind="adamw", params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
             dict(kind="adamw", params=qk_gamma_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=router_params, lr=router_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
         ]
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
@@ -750,7 +748,6 @@ EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
 EMBEDDING_LR = 0.2
 UNEMBEDDING_LR = 0.003
 MATRIX_LR = 0.0205
-ROUTER_LR = 0.003
 SCALAR_LR = 0.5
 WEIGHT_DECAY = 0.2
 ADAM_BETAS = (0.8, 0.95)
@@ -819,7 +816,6 @@ optimizer = raw_model.setup_optimizer(
     scalar_lr=SCALAR_LR,
     adam_betas=ADAM_BETAS,
     matrix_lr=MATRIX_LR,
-    router_lr=ROUTER_LR,
     weight_decay=WEIGHT_DECAY,
 )
 
