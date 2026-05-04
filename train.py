@@ -202,6 +202,7 @@ class GPTConfig:
     num_experts: int = 8
     top_k: int = 2
     moe_hidden_dim: int = 1792
+    qk_norm_scale: float = 1.0
     router_z_loss_coef: float = 1.0e-3
     load_balance_loss_coef: float = 1.0e-2
 
@@ -219,7 +220,7 @@ class CausalSelfAttention(nn.Module):
         self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
-        self.qk_gamma = nn.Parameter(torch.ones(()))
+        self.qk_norm_scale = config.qk_norm_scale
         self.ve_gate_channels = 32
         self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
 
@@ -238,9 +239,9 @@ class CausalSelfAttention(nn.Module):
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)  # QK norm for stable attention logits.
-        q = q * self.qk_gamma
+        q, k = q * self.qk_norm_scale, k * self.qk_norm_scale
 
-        y = fa3.flash_attn_func(q, k, v, softmax_scale=1.0, causal=True, window_size=window_size)
+        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -403,7 +404,6 @@ class GPT(nn.Module):
             torch.nn.init.uniform_(block.attn.c_k.weight, -s, s)
             torch.nn.init.uniform_(block.attn.c_v.weight, -s, s)
             torch.nn.init.zeros_(block.attn.c_proj.weight)
-            block.attn.qk_gamma.fill_(1.0)
 
             # Tiny nonzero router init avoids deterministic top-k tie collapse.
             torch.nn.init.normal_(block.moe.router.weight, mean=0.0, std=1e-3)
@@ -498,9 +498,7 @@ class GPT(nn.Module):
     def setup_optimizer(self, unembedding_lr=0.003, embedding_lr=0.2, matrix_lr=0.02,
                         weight_decay=0.2, adam_betas=(0.8, 0.95), scalar_lr=0.5):
         model_dim = self.config.n_embd
-        qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
-        qk_gamma_param_ids = {id(p) for p in qk_gamma_params}
-        matrix_params = [p for p in self.transformer.h.parameters() if id(p) not in qk_gamma_param_ids]
+        matrix_params = list(self.transformer.h.parameters())
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
@@ -508,8 +506,7 @@ class GPT(nn.Module):
         x0_params = [self.x0_lambdas]
         assert len(list(self.parameters())) == (
             len(matrix_params) + len(embedding_params) + len(lm_head_params) +
-            len(value_embeds_params) + len(resid_params) + len(x0_params) +
-            len(qk_gamma_params)
+            len(value_embeds_params) + len(resid_params) + len(x0_params)
         )
 
         # Scale AdamW LRs relative to the original 768-dim tuning point.
@@ -521,7 +518,6 @@ class GPT(nn.Module):
             dict(kind="adamw", params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind="adamw", params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
             dict(kind="adamw", params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=qk_gamma_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
         ]
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
@@ -738,6 +734,7 @@ WINDOW_PATTERN = "SSSL"
 NUM_EXPERTS = 16
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
+QK_NORM_SCALE = 1.02
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
@@ -784,6 +781,7 @@ config = GPTConfig(
     num_experts=NUM_EXPERTS,
     top_k=TOP_K,
     moe_hidden_dim=MOE_HIDDEN_DIM,
+    qk_norm_scale=QK_NORM_SCALE,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
 )
@@ -1082,7 +1080,6 @@ peak_vram_tensor = torch.tensor([peak_vram_mb_local], device=device)
 if IS_DISTRIBUTED:
     dist.all_reduce(peak_vram_tensor, op=dist.ReduceOp.MAX)
 peak_vram_mb = float(peak_vram_tensor.item())
-qk_gamma_tensor = torch.stack([block.attn.qk_gamma.detach().float() for block in raw_model.transformer.h])
 
 if IS_MASTER:
     print("---")
@@ -1102,9 +1099,6 @@ if IS_MASTER:
     print(f"num_experts:      {NUM_EXPERTS}")
     print(f"top_k:            {TOP_K}")
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
-    print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
-    print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
-    print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
     print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
     print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
     for key in [
