@@ -709,7 +709,7 @@ WINDOW_PATTERN = "SSSL"
 NUM_EXPERTS = 8
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
-ROUTER_Z_LOSS_COEF = 1.0e-3
+ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
 # Optimization. The optimizer algorithm is frozen; agents may tune LR values.
