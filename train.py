@@ -266,14 +266,21 @@ class TokenChoiceMoE(nn.Module):
         self.n_embd = config.n_embd
         self.num_experts = config.num_experts
         self.top_k = config.top_k
+        self.moe_hidden_dim = config.moe_hidden_dim
         self.router_z_loss_coef = config.router_z_loss_coef
         self.load_balance_loss_coef = config.load_balance_loss_coef
         assert 1 <= self.top_k <= self.num_experts
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
-        self.experts = nn.ModuleList([
-            SwiGLUExpert(config.n_embd, config.moe_hidden_dim)
-            for _ in range(config.num_experts)
-        ])
+        expert_dtype = torch.bfloat16
+        self.w_gate = nn.Parameter(torch.empty(
+            config.num_experts * config.n_embd, config.moe_hidden_dim, dtype=expert_dtype,
+        ))
+        self.w_up = nn.Parameter(torch.empty(
+            config.num_experts * config.n_embd, config.moe_hidden_dim, dtype=expert_dtype,
+        ))
+        self.w_down = nn.Parameter(torch.empty(
+            config.num_experts * config.moe_hidden_dim, config.n_embd, dtype=expert_dtype,
+        ))
 
     def forward(self, x):
         B, T, C = x.shape
@@ -304,16 +311,27 @@ class TokenChoiceMoE(nn.Module):
             load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
             max_load = load_frac.max()
 
-        flat_out = torch.zeros_like(flat_x)
-        for expert_id, expert in enumerate(self.experts):
-            token_idx, choice_idx = (top_idx == expert_id).nonzero(as_tuple=True)
-            # Calling the expert even on an empty token set keeps the autograd
-            # graph/DDP behavior stable if routing temporarily collapses.
-            expert_in = flat_x.index_select(0, token_idx)
-            expert_out = expert(expert_in)
-            weights = top_weight[token_idx, choice_idx].to(dtype=expert_out.dtype)
-            expert_out = expert_out * weights.unsqueeze(-1)
-            flat_out.index_add_(0, token_idx, expert_out)
+        choice_expert = top_idx.reshape(-1)
+        choice_token = torch.arange(N, device=flat_x.device).repeat_interleave(K)
+        sort_order = torch.argsort(choice_expert)
+        sorted_expert = choice_expert.index_select(0, sort_order)
+        sorted_token = choice_token.index_select(0, sort_order)
+        sorted_x = flat_x.index_select(0, sorted_token).to(dtype=self.w_gate.dtype)
+        sorted_weight = top_weight.reshape(-1).index_select(0, sort_order).to(dtype=sorted_x.dtype)
+        expert_counts = torch.bincount(sorted_expert, minlength=E).to(torch.int32)
+        expert_offsets = torch.cumsum(expert_counts, dim=0, dtype=torch.int32)
+
+        w_gate = self.w_gate.view(E, C, self.moe_hidden_dim)
+        w_up = self.w_up.view(E, C, self.moe_hidden_dim)
+        w_down = self.w_down.view(E, self.moe_hidden_dim, C)
+        gate = torch._grouped_mm(sorted_x, w_gate, expert_offsets)
+        up = torch._grouped_mm(sorted_x, w_up, expert_offsets)
+        hidden = F.silu(gate) * up
+        expert_out = torch._grouped_mm(hidden, w_down, expert_offsets)
+        expert_out = expert_out * sorted_weight.unsqueeze(-1)
+
+        flat_out = torch.zeros(N, C, device=flat_x.device, dtype=expert_out.dtype)
+        flat_out.index_add_(0, sorted_token, expert_out)
 
         stats = {
             "router_entropy": entropy.detach(),
@@ -323,14 +341,13 @@ class TokenChoiceMoE(nn.Module):
             "router_lb_loss": load_balance_loss.detach(),
             "router_aux_loss": aux_loss.detach(),
         }
-        return flat_out.view(B, T, C), aux_loss, stats
+        return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
 
     def expert_param_count(self):
-        return sum(p.numel() for expert in self.experts for p in expert.parameters())
+        return self.w_gate.numel() + self.w_up.numel() + self.w_down.numel()
 
     def active_expert_param_count(self):
-        # All experts have identical shapes.
-        one_expert = sum(p.numel() for p in self.experts[0].parameters())
+        one_expert = 3 * self.n_embd * self.moe_hidden_dim
         return self.top_k * one_expert
 
 
@@ -388,10 +405,9 @@ class GPT(nn.Module):
 
             # Tiny nonzero router init avoids deterministic top-k tie collapse.
             torch.nn.init.normal_(block.moe.router.weight, mean=0.0, std=1e-3)
-            for expert in block.moe.experts:
-                torch.nn.init.uniform_(expert.w_gate.weight, -s, s)
-                torch.nn.init.uniform_(expert.w_up.weight, -s, s)
-                torch.nn.init.zeros_(expert.w_down.weight)
+            torch.nn.init.uniform_(block.moe.w_gate, -s, s)
+            torch.nn.init.uniform_(block.moe.w_up, -s, s)
+            torch.nn.init.zeros_(block.moe.w_down)
 
         self.resid_lambdas.fill_(1.0)
         self.x0_lambdas.fill_(0.1)
@@ -709,7 +725,7 @@ HEAD_DIM = 128
 NUM_HEADS = MODEL_DIM // HEAD_DIM
 NUM_KV_HEADS = 2
 WINDOW_PATTERN = "SSSL"
-NUM_EXPERTS = 12
+NUM_EXPERTS = 16
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 QK_NORM_SCALE = 1.02
