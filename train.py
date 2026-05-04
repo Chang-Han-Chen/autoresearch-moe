@@ -202,6 +202,7 @@ class GPTConfig:
     num_experts: int = 8
     top_k: int = 2
     moe_hidden_dim: int = 1792
+    qk_norm_scale: float = 1.0
     router_z_loss_coef: float = 1.0e-3
     load_balance_loss_coef: float = 1.0e-2
 
@@ -219,6 +220,7 @@ class CausalSelfAttention(nn.Module):
         self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.qk_norm_scale = config.qk_norm_scale
         self.ve_gate_channels = 32
         self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
 
@@ -237,6 +239,7 @@ class CausalSelfAttention(nn.Module):
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)  # QK norm for stable attention logits.
+        q, k = q * self.qk_norm_scale, k * self.qk_norm_scale
 
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
@@ -709,6 +712,7 @@ WINDOW_PATTERN = "SSSL"
 NUM_EXPERTS = 8
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
+QK_NORM_SCALE = 1.02
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
@@ -755,6 +759,7 @@ config = GPTConfig(
     num_experts=NUM_EXPERTS,
     top_k=TOP_K,
     moe_hidden_dim=MOE_HIDDEN_DIM,
+    qk_norm_scale=QK_NORM_SCALE,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
 )
