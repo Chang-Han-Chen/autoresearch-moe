@@ -202,7 +202,7 @@ class GPTConfig:
 
 
 class CausalSelfAttention(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_idx):
         super().__init__()
         self.n_head = config.n_head
         self.n_kv_head = config.n_kv_head
@@ -215,12 +215,16 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
+        self.value_resid_alpha = nn.Parameter(torch.zeros(())) if layer_idx > 0 else None
 
-    def forward(self, x, cos_sin, window_size):
+    def forward(self, x, first_v, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+        layer_v = v
+        if first_v is not None and self.value_resid_alpha is not None:
+            v = v + self.value_resid_alpha.to(dtype=v.dtype) * first_v.to(dtype=v.dtype)
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -230,7 +234,7 @@ class CausalSelfAttention(nn.Module):
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
-        return y
+        return y, layer_v
 
 
 class SwiGLUExpert(nn.Module):
@@ -338,16 +342,17 @@ class TokenChoiceMoE(nn.Module):
 
 
 class Block(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, layer_idx):
         super().__init__()
-        self.attn = CausalSelfAttention(config)
+        self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = TokenChoiceMoE(config)
 
-    def forward(self, x, cos_sin, window_size):
-        x = x + self.attn(norm(x), cos_sin, window_size)
+    def forward(self, x, first_v, cos_sin, window_size):
+        attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
+        x = x + attn_out
         moe_out, aux_loss, stats = self.moe(norm(x))
         x = x + moe_out
-        return x, aux_loss, stats
+        return x, aux_loss, stats, layer_v
 
 
 class GPT(nn.Module):
@@ -357,7 +362,7 @@ class GPT(nn.Module):
         self.window_sizes = self._compute_window_sizes(config)
         self.transformer = nn.ModuleDict({
             "wte": nn.Embedding(config.vocab_size, config.n_embd),
-            "h": nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
+            "h": nn.ModuleList([Block(config, i) for i in range(config.n_layer)]),
         })
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
@@ -391,6 +396,8 @@ class GPT(nn.Module):
             init_weight(block.attn.c_v.weight, self.config.n_embd)
             init_weight(block.attn.c_proj.weight, self.config.n_embd)
             block.attn.qk_gamma.fill_(1.0)
+            if block.attn.value_resid_alpha is not None:
+                block.attn.value_resid_alpha.zero_()
 
             init_weight(block.moe.router.weight, self.config.n_embd)
             init_weight(block.moe.w_gate, self.config.n_embd)
@@ -437,8 +444,8 @@ class GPT(nn.Module):
     def num_scaling_params(self):
         wte = sum(p.numel() for p in self.transformer.wte.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
-        transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
-        scalars = 0
+        transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters() if p.ndim >= 2)
+        scalars = sum(p.numel() for p in self.transformer.h.parameters() if p.ndim < 2)
         total = wte + lm_head + transformer_matrices + scalars
         total_expert, active_expert = self.expert_param_counts()
         active = total - total_expert + active_expert
@@ -470,14 +477,19 @@ class GPT(nn.Module):
 
     def setup_optimizer(self, adamw_lr=0.003,
                         weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
-        qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
+        attention_scalar_params = [block.attn.qk_gamma for block in self.transformer.h]
+        attention_scalar_params.extend(
+            block.attn.value_resid_alpha
+            for block in self.transformer.h
+            if block.attn.value_resid_alpha is not None
+        )
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
         param_groups = [
             dict(kind="adamw", params=lm_head_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
             dict(kind="adamw", params=embedding_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
-            dict(kind="adamw", params=qk_gamma_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
+            dict(kind="adamw", params=attention_scalar_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
         ]
 
         muon_params = []
@@ -508,7 +520,7 @@ class GPT(nn.Module):
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
-            len(qk_gamma_params)
+            len(attention_scalar_params)
         )
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
@@ -522,11 +534,14 @@ class GPT(nn.Module):
 
         x = self.transformer.wte(idx)
         x = norm(x)
+        first_v = None
         aux_loss = x.new_zeros(())
         stats_by_key = {}
 
         for i, block in enumerate(self.transformer.h):
-            x, block_aux, block_stats = block(x, cos_sin, self.window_sizes[i])
+            x, block_aux, block_stats, layer_v = block(x, first_v, cos_sin, self.window_sizes[i])
+            if first_v is None:
+                first_v = layer_v
             aux_loss = aux_loss + block_aux
             for key, value in block_stats.items():
                 stats_by_key.setdefault(key, []).append(value)
@@ -1051,6 +1066,11 @@ if IS_DISTRIBUTED:
     dist.all_reduce(peak_vram_tensor, op=dist.ReduceOp.MAX)
 peak_vram_mb = float(peak_vram_tensor.item())
 qk_gamma_tensor = torch.stack([block.attn.qk_gamma.detach().float() for block in raw_model.transformer.h])
+value_resid_alpha_tensor = torch.stack([
+    block.attn.value_resid_alpha.detach().float()
+    for block in raw_model.transformer.h
+    if block.attn.value_resid_alpha is not None
+])
 
 if IS_MASTER:
     print("---")
@@ -1073,6 +1093,9 @@ if IS_MASTER:
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
+    print(f"mean_value_resid_alpha: {value_resid_alpha_tensor.mean().item():.6f}")
+    print(f"min_value_resid_alpha:  {value_resid_alpha_tensor.min().item():.6f}")
+    print(f"max_value_resid_alpha:  {value_resid_alpha_tensor.max().item():.6f}")
     print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
     print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
     for key in [
