@@ -497,18 +497,12 @@ class GPT(nn.Module):
             attn_flops += 12 * h * q * effective_seq
         return 6 * (active_params - nparams_exclude) + attn_flops
 
-    def setup_optimizer(self, adamw_lr=0.003, muon_lr=0.02,
+    def setup_optimizer(self, adamw_lr=0.003,
                         weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
         qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
-        qk_gamma_param_ids = {id(p) for p in qk_gamma_params}
-        matrix_params = [p for p in self.transformer.h.parameters() if id(p) not in qk_gamma_param_ids]
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
-        assert len(list(self.parameters())) == (
-            len(matrix_params) + len(embedding_params) + len(lm_head_params) +
-            len(value_embeds_params) + len(qk_gamma_params)
-        )
 
         param_groups = [
             dict(kind="adamw", params=lm_head_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
@@ -516,12 +510,43 @@ class GPT(nn.Module):
             dict(kind="adamw", params=value_embeds_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
             dict(kind="adamw", params=qk_gamma_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
         ]
-        for shape in sorted({p.shape for p in matrix_params}):
-            group_params = [p for p in matrix_params if p.shape == shape]
+
+        muon_params = []
+
+        def add_muon_group(name, params, d_in, d_out):
+            params = list(params)
+            if not params:
+                return
+            lr = adamw_lr * MUON_LR_WIDTH_FACTOR * math.sqrt(max(d_in, d_out))
+            muon_params.extend(params)
             param_groups.append(dict(
-                kind="muon", params=group_params, lr=muon_lr,
-                momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
+                kind="muon", name=name, params=params, lr=lr,
+                momentum=MUON_MOMENTUM, ns_steps=MUON_NS_STEPS, beta2=MUON_BETA2,
+                weight_decay=weight_decay,
             ))
+
+        head_dim = self.config.n_embd // self.config.n_head
+        kv_dim = self.config.n_kv_head * head_dim
+        blocks = list(self.transformer.h)
+        add_muon_group("attn_q", (block.attn.c_q.weight for block in blocks), self.config.n_embd, self.config.n_embd)
+        add_muon_group("attn_k", (block.attn.c_k.weight for block in blocks), self.config.n_embd, kv_dim)
+        add_muon_group("attn_v", (block.attn.c_v.weight for block in blocks), self.config.n_embd, kv_dim)
+        add_muon_group("attn_proj", (block.attn.c_proj.weight for block in blocks), self.config.n_embd, self.config.n_embd)
+        add_muon_group("router", (block.moe.router.weight for block in blocks), self.config.n_embd, self.config.num_experts)
+        add_muon_group("expert_gate", (block.moe.w_gate for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_up", (block.moe.w_up for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_down", (block.moe.w_down for block in blocks), self.config.moe_hidden_dim, self.config.n_embd)
+        add_muon_group(
+            "value_gate",
+            (block.attn.ve_gate.weight for block in blocks if block.attn.ve_gate is not None),
+            blocks[0].attn.ve_gate_channels,
+            self.config.n_kv_head,
+        )
+
+        assert len(list(self.parameters())) == (
+            len(muon_params) + len(embedding_params) + len(lm_head_params) +
+            len(value_embeds_params) + len(qk_gamma_params)
+        )
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
             group["initial_lr"] = group["lr"]
@@ -696,7 +721,7 @@ class MuonAdamW(torch.optim.Optimizer):
         stacked_params = torch.stack(params)
         self._muon_momentum_t.fill_(group["momentum"])
         self._muon_beta2_t.fill_(group["beta2"] if group["beta2"] is not None else 0.0)
-        self._muon_lr_t.fill_(group["lr"] * max(1.0, shape[-2] / shape[-1])**0.5)
+        self._muon_lr_t.fill_(group["lr"])
         self._muon_wd_t.fill_(group["weight_decay"])
         muon_step_fused(
             stacked_grads, stacked_params,
@@ -738,7 +763,10 @@ TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ra
 DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
 ADAMW_LR = 0.003
-MUON_LR = 0.0205
+MUON_LR_WIDTH_FACTOR = 0.2
+MUON_MOMENTUM = 0.95
+MUON_NS_STEPS = 5
+MUON_BETA2 = 0.95
 WEIGHT_DECAY = 0.1
 ADAM_BETAS = (0.9, 0.95)
 ADAM_EPS = 1e-8
@@ -804,11 +832,15 @@ grad_accum_steps = TOTAL_BATCH_SIZE // (WORLD_SIZE * DEVICE_BATCH_SIZE * MAX_SEQ
 
 optimizer = raw_model.setup_optimizer(
     adamw_lr=ADAMW_LR,
-    muon_lr=MUON_LR,
     adam_betas=ADAM_BETAS,
     adam_eps=ADAM_EPS,
     weight_decay=WEIGHT_DECAY,
 )
+if IS_MASTER:
+    master_print(f"AdamW peak lr: {ADAMW_LR:.6g}")
+    for group in optimizer.param_groups:
+        if group["kind"] == "muon":
+            master_print(f"Muon peak lr ({group['name']}): {group['initial_lr']:.6g}")
 
 model = raw_model
 if ENABLE_COMPILE:
@@ -838,11 +870,6 @@ def get_lr_multiplier(step):
     decay_progress = min(max((step - WARMUP_STEPS) / decay_steps, 0.0), 1.0)
     cosine = 0.5 * (1.0 + math.cos(math.pi * decay_progress))
     return MIN_LR_FRAC + (1.0 - MIN_LR_FRAC) * cosine
-
-
-def get_muon_momentum(step):
-    frac = min(step / 300, 1)
-    return (1 - frac) * 0.85 + frac * 0.95
 
 
 def maybe_all_reduce_mean(tensor):
@@ -949,11 +976,8 @@ while True:
     # Progress and schedules.
     progress = min(total_training_time / TRAIN_TIME_BUDGET, 1.0)
     lrm = get_lr_multiplier(step)
-    muon_momentum = get_muon_momentum(step)
     for group in optimizer.param_groups:
         group["lr"] = group["initial_lr"] * lrm
-        if group["kind"] == "muon":
-            group["momentum"] = muon_momentum
 
     torch.nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
     optimizer.step()
