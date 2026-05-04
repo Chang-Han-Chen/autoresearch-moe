@@ -513,29 +513,35 @@ class GPT(nn.Module):
 
         muon_params = []
 
-        muon_lr = adamw_lr * MUON_LR_FACTOR
-
-        def add_muon_group(name, params):
+        def add_muon_group(name, params, d_in, d_out):
             params = list(params)
             if not params:
                 return
+            lr = adamw_lr * MUON_LR_WIDTH_FACTOR * math.sqrt(max(d_in, d_out))
             muon_params.extend(params)
             param_groups.append(dict(
-                kind="muon", name=name, params=params, lr=muon_lr,
+                kind="muon", name=name, params=params, lr=lr,
                 momentum=MUON_MOMENTUM, ns_steps=MUON_NS_STEPS, beta2=MUON_BETA2,
                 weight_decay=weight_decay,
             ))
 
+        head_dim = self.config.n_embd // self.config.n_head
+        kv_dim = self.config.n_kv_head * head_dim
         blocks = list(self.transformer.h)
-        add_muon_group("attn_q", (block.attn.c_q.weight for block in blocks))
-        add_muon_group("attn_k", (block.attn.c_k.weight for block in blocks))
-        add_muon_group("attn_v", (block.attn.c_v.weight for block in blocks))
-        add_muon_group("attn_proj", (block.attn.c_proj.weight for block in blocks))
-        add_muon_group("router", (block.moe.router.weight for block in blocks))
-        add_muon_group("expert_gate", (block.moe.w_gate for block in blocks))
-        add_muon_group("expert_up", (block.moe.w_up for block in blocks))
-        add_muon_group("expert_down", (block.moe.w_down for block in blocks))
-        add_muon_group("value_gate", (block.attn.ve_gate.weight for block in blocks if block.attn.ve_gate is not None))
+        add_muon_group("attn_q", (block.attn.c_q.weight for block in blocks), self.config.n_embd, self.config.n_embd)
+        add_muon_group("attn_k", (block.attn.c_k.weight for block in blocks), self.config.n_embd, kv_dim)
+        add_muon_group("attn_v", (block.attn.c_v.weight for block in blocks), self.config.n_embd, kv_dim)
+        add_muon_group("attn_proj", (block.attn.c_proj.weight for block in blocks), self.config.n_embd, self.config.n_embd)
+        add_muon_group("router", (block.moe.router.weight for block in blocks), self.config.n_embd, self.config.num_experts)
+        add_muon_group("expert_gate", (block.moe.w_gate for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_up", (block.moe.w_up for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_down", (block.moe.w_down for block in blocks), self.config.moe_hidden_dim, self.config.n_embd)
+        add_muon_group(
+            "value_gate",
+            (block.attn.ve_gate.weight for block in blocks if block.attn.ve_gate is not None),
+            blocks[0].attn.ve_gate_channels,
+            self.config.n_kv_head,
+        )
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
@@ -757,7 +763,7 @@ TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ra
 DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
 ADAMW_LR = 0.001
-MUON_LR_FACTOR = 7.0
+MUON_LR_WIDTH_FACTOR = 0.2
 MUON_MOMENTUM = 0.95
 MUON_NS_STEPS = 5
 MUON_BETA2 = 0.95
