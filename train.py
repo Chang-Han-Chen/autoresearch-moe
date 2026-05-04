@@ -220,8 +220,6 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
-        self.ve_gate_channels = 32
-        self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None
 
     def forward(self, x, ve, cos_sin, window_size):
         B, T, C = x.size()
@@ -232,8 +230,7 @@ class CausalSelfAttention(nn.Module):
         # Value residual / value embedding: preserve early token value information.
         if ve is not None:
             ve = ve.view(B, T, self.n_kv_head, self.head_dim)
-            gate = 2 * torch.sigmoid(self.ve_gate(x[..., :self.ve_gate_channels]))
-            v = v + gate.unsqueeze(-1) * ve
+            v = v + ve
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -418,9 +415,6 @@ class GPT(nn.Module):
 
         for ve in self.value_embeds.values():
             init_weight(ve.weight, ve.embedding_dim)
-        for block in self.transformer.h:
-            if block.attn.ve_gate is not None:
-                init_weight(block.attn.ve_gate.weight, block.attn.ve_gate_channels)
 
         head_dim = self.config.n_embd // self.config.n_head
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
@@ -536,12 +530,6 @@ class GPT(nn.Module):
         add_muon_group("expert_gate", (block.moe.w_gate for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
         add_muon_group("expert_up", (block.moe.w_up for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
         add_muon_group("expert_down", (block.moe.w_down for block in blocks), self.config.moe_hidden_dim, self.config.n_embd)
-        add_muon_group(
-            "value_gate",
-            (block.attn.ve_gate.weight for block in blocks if block.attn.ve_gate is not None),
-            blocks[0].attn.ve_gate_channels,
-            self.config.n_kv_head,
-        )
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
