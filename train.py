@@ -710,7 +710,7 @@ NUM_EXPERTS = 8
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 1.0e-3
-LOAD_BALANCE_LOSS_COEF = 1.0e-2
+LOAD_BALANCE_LOSS_COEF = 3.0e-3
 
 # Optimization. The optimizer algorithm is frozen; agents may tune LR values.
 TOTAL_BATCH_SIZE = 2**19       # global tokens per optimizer step, across all ranks
