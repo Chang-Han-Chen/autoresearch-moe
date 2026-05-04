@@ -374,6 +374,8 @@ class GPT(nn.Module):
         self.last_router_stats = {}
         self.last_ce_loss = None
         self.last_total_loss = None
+        self.grad_diag_enabled = False
+        self.last_first_v_resid_for_diag = None
 
     @torch.no_grad()
     def init_weights(self):
@@ -534,6 +536,8 @@ class GPT(nn.Module):
 
         x = self.transformer.wte(idx)
         x = norm(x)
+        if self.grad_diag_enabled:
+            self.last_first_v_resid_for_diag = None
         first_v = None
         aux_loss = x.new_zeros(())
         stats_by_key = {}
@@ -541,7 +545,12 @@ class GPT(nn.Module):
         for i, block in enumerate(self.transformer.h):
             x, block_aux, block_stats, layer_v = block(x, first_v, cos_sin, self.window_sizes[i])
             if first_v is None:
-                first_v = layer_v
+                if self.grad_diag_enabled and torch.is_grad_enabled():
+                    first_v = layer_v.clone()
+                    first_v.retain_grad()
+                    self.last_first_v_resid_for_diag = first_v
+                else:
+                    first_v = layer_v
             aux_loss = aux_loss + block_aux
             for key, value in block_stats.items():
                 stats_by_key.setdefault(key, []).append(value)
@@ -750,6 +759,11 @@ ESTIMATED_TOTAL_STEPS = 2390
 MIN_LR_FRAC = 0.1
 ENABLE_COMPILE = True          # speed experiment: compile static model regions if sparse MoE permits it
 
+# Optional actual-run gradient diagnostics. Disabled for normal benchmark runs.
+GRAD_DIAG = os.environ.get("AR_GRAD_DIAG", "0") == "1"
+GRAD_DIAG_EVERY = int(os.environ.get("AR_GRAD_DIAG_EVERY", "100"))
+GRAD_DIAG_EXTRA_STEPS = {0, 1, 2, 5, 10, 20, 50}
+
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
 # ---------------------------------------------------------------------------
@@ -788,6 +802,7 @@ with torch.device("meta"):
 raw_model.to_empty(device=device)
 raw_model.init_weights()
 raw_model.train()
+raw_model.grad_diag_enabled = GRAD_DIAG
 
 param_counts = raw_model.num_scaling_params()
 if IS_MASTER:
@@ -817,8 +832,10 @@ if IS_MASTER:
             master_print(f"Muon peak lr ({group['name']}): {group['initial_lr']:.6g}")
 
 model = raw_model
-if ENABLE_COMPILE:
+if ENABLE_COMPILE and not GRAD_DIAG:
     model = torch.compile(model, dynamic=False)
+elif GRAD_DIAG:
+    master_print("Gradient diagnostics enabled; torch.compile disabled for activation gradient capture.")
 if IS_DISTRIBUTED:
     model = DDP(
         model,
@@ -913,6 +930,114 @@ def reduce_router_stats(stats):
     return summary
 
 
+def collect_grad_diag(model):
+    blocks = list(model.transformer.h)
+
+    def nan_tensor():
+        return torch.tensor(float("nan"), dtype=torch.float32, device=device)
+
+    def grad_rms(param):
+        if param is None or param.grad is None:
+            return nan_tensor()
+        return param.grad.detach().float().square().mean().sqrt()
+
+    def tensor_grad_rms(tensor):
+        if tensor is None or tensor.grad is None:
+            return nan_tensor()
+        return tensor.grad.detach().float().square().mean().sqrt()
+
+    def tensor_grad_max_abs(tensor):
+        if tensor is None or tensor.grad is None:
+            return nan_tensor()
+        return tensor.grad.detach().float().abs().max()
+
+    def mean_of(values):
+        values = [v for v in values if bool(torch.isfinite(v).all().item())]
+        return torch.stack(values).mean() if values else nan_tensor()
+
+    def max_of(values):
+        values = [v for v in values if bool(torch.isfinite(v).all().item())]
+        return torch.stack(values).max() if values else nan_tensor()
+
+    def total_grad_norm():
+        sq_sum = torch.zeros((), dtype=torch.float32, device=device)
+        for param in model.parameters():
+            if param.grad is not None:
+                sq_sum = sq_sum + param.grad.detach().float().square().sum()
+        return sq_sum.sqrt()
+
+    alpha_params = [block.attn.value_resid_alpha for block in blocks if block.attn.value_resid_alpha is not None]
+    alpha_values = [p.detach().float().abs() for p in alpha_params]
+    alpha_grads = [p.grad.detach().float().abs() for p in alpha_params if p.grad is not None]
+
+    qk_gamma_params = [block.attn.qk_gamma for block in blocks]
+    qk_gamma_grads = [p.grad.detach().float().abs() for p in qk_gamma_params if p.grad is not None]
+
+    first_v = model.last_first_v_resid_for_diag
+    cv_grad_rms = [grad_rms(block.attn.c_v.weight) for block in blocks]
+    router_grad_rms = [grad_rms(block.moe.router.weight) for block in blocks]
+    expert_gate_grad_rms = [grad_rms(block.moe.w_gate) for block in blocks]
+    expert_up_grad_rms = [grad_rms(block.moe.w_up) for block in blocks]
+    expert_down_grad_rms = [grad_rms(block.moe.w_down) for block in blocks]
+    attn_proj_grad_rms = [grad_rms(block.attn.c_proj.weight) for block in blocks]
+
+    diag = {
+        "total_grad_norm": total_grad_norm(),
+        "first_v_resid_grad_rms": tensor_grad_rms(first_v),
+        "first_v_resid_grad_rank_max_abs": tensor_grad_max_abs(first_v),
+        "value_alpha_abs_mean": mean_of(alpha_values),
+        "value_alpha_abs_max": max_of(alpha_values),
+        "value_alpha_grad_abs_mean": mean_of(alpha_grads),
+        "value_alpha_grad_abs_max": max_of(alpha_grads),
+        "qk_gamma_grad_abs_mean": mean_of(qk_gamma_grads),
+        "cv0_grad_rms": cv_grad_rms[0] if cv_grad_rms else nan_tensor(),
+        "cv_later_grad_rms_mean": mean_of(cv_grad_rms[1:]),
+        "cv_later_grad_rms_max": max_of(cv_grad_rms[1:]),
+        "router_grad_rms_mean": mean_of(router_grad_rms),
+        "router_grad_rms_max": max_of(router_grad_rms),
+        "expert_gate_grad_rms_mean": mean_of(expert_gate_grad_rms),
+        "expert_up_grad_rms_mean": mean_of(expert_up_grad_rms),
+        "expert_down_grad_rms_mean": mean_of(expert_down_grad_rms),
+        "attn_proj_grad_rms_mean": mean_of(attn_proj_grad_rms),
+    }
+
+    keys = sorted(diag)
+    values = torch.stack([diag[key].float().reshape(()) for key in keys])
+    if IS_DISTRIBUTED:
+        dist.all_reduce(values, op=dist.ReduceOp.SUM)
+        values.div_(WORLD_SIZE)
+    return {key: float(value.item()) for key, value in zip(keys, values)}
+
+
+def should_log_grad_diag(step):
+    return GRAD_DIAG and (step in GRAD_DIAG_EXTRA_STEPS or (GRAD_DIAG_EVERY > 0 and step % GRAD_DIAG_EVERY == 0))
+
+
+def format_grad_diag(step, train_ce, train_total, lrm, diag, router_summary):
+    fields = [
+        f"\nGRAD_DIAG step {step:05d}",
+        f"ce={train_ce:.6f}",
+        f"total={train_total:.6f}",
+        f"lrm={lrm:.3f}",
+        f"grad_norm={diag['total_grad_norm']:.3e}",
+        f"alpha_abs_mean={diag['value_alpha_abs_mean']:.3e}",
+        f"alpha_grad_mean={diag['value_alpha_grad_abs_mean']:.3e}",
+        f"first_v_resid_grad={diag['first_v_resid_grad_rms']:.3e}",
+        f"cv0_grad={diag['cv0_grad_rms']:.3e}",
+        f"cv_later_grad_mean={diag['cv_later_grad_rms_mean']:.3e}",
+        f"router_grad_mean={diag['router_grad_rms_mean']:.3e}",
+        f"expert_down_grad_mean={diag['expert_down_grad_rms_mean']:.3e}",
+        f"attn_proj_grad_mean={diag['attn_proj_grad_rms_mean']:.3e}",
+    ]
+    if router_summary:
+        fields.extend([
+            f"router_ent={router_summary.get('router_entropy', float('nan')):.3f}",
+            f"load_cv={router_summary.get('expert_load_cv', float('nan')):.3f}",
+            f"max_load={router_summary.get('max_expert_load', float('nan')):.3f}",
+        ])
+    return " | ".join(fields)
+
+
 # ---------------------------------------------------------------------------
 # Training loop
 # ---------------------------------------------------------------------------
@@ -952,6 +1077,22 @@ while True:
     lrm = get_lr_multiplier(step)
     for group in optimizer.param_groups:
         group["lr"] = group["initial_lr"] * lrm
+
+    if should_log_grad_diag(step):
+        grad_diag = collect_grad_diag(raw_model)
+        diag_router_stats = reduce_router_stats(raw_model.last_router_stats) if raw_model.last_router_stats else {}
+        if IS_MASTER:
+            print(
+                format_grad_diag(
+                    step,
+                    float(train_ce_loss_tensor.item()),
+                    float(train_total_loss_tensor.item()),
+                    lrm,
+                    grad_diag,
+                    diag_router_stats,
+                ),
+                flush=True,
+            )
 
     torch.nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
     optimizer.step()
