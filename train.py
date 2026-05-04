@@ -373,8 +373,6 @@ class GPT(nn.Module):
             "h": nn.ModuleList([Block(config, i) for i in range(config.n_layer)]),
         })
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.resid_lambdas = nn.Parameter(torch.ones(config.n_layer))
-        self.x0_lambdas = nn.Parameter(torch.zeros(config.n_layer))
 
         head_dim = config.n_embd // config.n_head
         kv_dim = config.n_kv_head * head_dim
@@ -393,32 +391,33 @@ class GPT(nn.Module):
 
     @torch.no_grad()
     def init_weights(self):
-        torch.nn.init.normal_(self.transformer.wte.weight, mean=0.0, std=1.0)
-        torch.nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.001)
+        init_std = INIT_STD
+        init_min = -3.0 * init_std
+        init_max = 3.0 * init_std
 
-        n_embd = self.config.n_embd
-        s = 3**0.5 * n_embd**-0.5
+        def init_weight(weight):
+            torch.nn.init.trunc_normal_(weight, mean=0.0, std=init_std, a=init_min, b=init_max)
+
+        init_weight(self.transformer.wte.weight)
+        init_weight(self.lm_head.weight)
+
         for block in self.transformer.h:
-            torch.nn.init.uniform_(block.attn.c_q.weight, -s, s)
-            torch.nn.init.uniform_(block.attn.c_k.weight, -s, s)
-            torch.nn.init.uniform_(block.attn.c_v.weight, -s, s)
-            torch.nn.init.zeros_(block.attn.c_proj.weight)
+            init_weight(block.attn.c_q.weight)
+            init_weight(block.attn.c_k.weight)
+            init_weight(block.attn.c_v.weight)
+            init_weight(block.attn.c_proj.weight)
             block.attn.qk_gamma.fill_(1.0)
 
-            # Tiny nonzero router init avoids deterministic top-k tie collapse.
-            torch.nn.init.normal_(block.moe.router.weight, mean=0.0, std=1e-3)
-            torch.nn.init.uniform_(block.moe.w_gate, -s, s)
-            torch.nn.init.uniform_(block.moe.w_up, -s, s)
-            torch.nn.init.zeros_(block.moe.w_down)
-
-        self.resid_lambdas.fill_(1.0)
-        self.x0_lambdas.fill_(0.1)
+            init_weight(block.moe.router.weight)
+            init_weight(block.moe.w_gate)
+            init_weight(block.moe.w_up)
+            init_weight(block.moe.w_down)
 
         for ve in self.value_embeds.values():
-            torch.nn.init.uniform_(ve.weight, -s, s)
+            init_weight(ve.weight)
         for block in self.transformer.h:
             if block.attn.ve_gate is not None:
-                torch.nn.init.zeros_(block.attn.ve_gate.weight)
+                init_weight(block.attn.ve_gate.weight)
 
         head_dim = self.config.n_embd // self.config.n_head
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
@@ -464,7 +463,7 @@ class GPT(nn.Module):
         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())
         lm_head = sum(p.numel() for p in self.lm_head.parameters())
         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())
-        scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel()
+        scalars = 0
         total = wte + value_embeds + lm_head + transformer_matrices + scalars
         total_expert, active_expert = self.expert_param_counts()
         active = total - total_expert + active_expert
@@ -495,38 +494,29 @@ class GPT(nn.Module):
             attn_flops += 12 * h * q * effective_seq
         return 6 * (active_params - nparams_exclude) + attn_flops
 
-    def setup_optimizer(self, unembedding_lr=0.003, embedding_lr=0.2, matrix_lr=0.02,
-                        weight_decay=0.2, adam_betas=(0.8, 0.95), scalar_lr=0.5):
-        model_dim = self.config.n_embd
+    def setup_optimizer(self, adamw_lr=0.003, muon_lr=0.02,
+                        weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
         qk_gamma_params = [block.attn.qk_gamma for block in self.transformer.h]
         qk_gamma_param_ids = {id(p) for p in qk_gamma_params}
         matrix_params = [p for p in self.transformer.h.parameters() if id(p) not in qk_gamma_param_ids]
         value_embeds_params = list(self.value_embeds.parameters())
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
-        resid_params = [self.resid_lambdas]
-        x0_params = [self.x0_lambdas]
         assert len(list(self.parameters())) == (
             len(matrix_params) + len(embedding_params) + len(lm_head_params) +
-            len(value_embeds_params) + len(resid_params) + len(x0_params) +
-            len(qk_gamma_params)
+            len(value_embeds_params) + len(qk_gamma_params)
         )
 
-        # Scale AdamW LRs relative to the original 768-dim tuning point.
-        dmodel_lr_scale = (model_dim / 768) ** -0.5
-        master_print(f"Scaling AdamW LRs by 1/sqrt({model_dim}/768) = {dmodel_lr_scale:.6f}")
         param_groups = [
-            dict(kind="adamw", params=lm_head_params, lr=unembedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=embedding_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=value_embeds_params, lr=embedding_lr * dmodel_lr_scale, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=resid_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=x0_params, lr=scalar_lr, betas=(0.96, 0.95), eps=1e-10, weight_decay=0.0),
-            dict(kind="adamw", params=qk_gamma_params, lr=scalar_lr * 0.01, betas=adam_betas, eps=1e-10, weight_decay=0.0),
+            dict(kind="adamw", params=lm_head_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
+            dict(kind="adamw", params=embedding_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
+            dict(kind="adamw", params=value_embeds_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
+            dict(kind="adamw", params=qk_gamma_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
         ]
         for shape in sorted({p.shape for p in matrix_params}):
             group_params = [p for p in matrix_params if p.shape == shape]
             param_groups.append(dict(
-                kind="muon", params=group_params, lr=matrix_lr,
+                kind="muon", params=group_params, lr=muon_lr,
                 momentum=0.95, ns_steps=5, beta2=0.95, weight_decay=weight_decay,
             ))
         optimizer = MuonAdamW(param_groups)
@@ -541,12 +531,10 @@ class GPT(nn.Module):
 
         x = self.transformer.wte(idx)
         x = norm(x)
-        x0 = x
         aux_loss = x.new_zeros(())
         stats_by_key = {}
 
         for i, block in enumerate(self.transformer.h):
-            x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0
             ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None
             x, block_aux, block_stats = block(x, ve, cos_sin, self.window_sizes[i])
             aux_loss = aux_loss + block_aux
@@ -741,19 +729,20 @@ MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 
-# Optimization. The optimizer algorithm is frozen; agents may tune LR values.
+# Optimization.
+INIT_STD = 0.02
 TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ranks
 DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
-EMBEDDING_LR = 0.2
-UNEMBEDDING_LR = 0.003
-MATRIX_LR = 0.0205
-SCALAR_LR = 0.5
-WEIGHT_DECAY = 0.2
-ADAM_BETAS = (0.8, 0.95)
-WARMUP_RATIO = 0.02
-WARMDOWN_RATIO = 0.5
-FINAL_LR_FRAC = 0.0
+ADAMW_LR = 0.003
+MUON_LR = 0.0205
+WEIGHT_DECAY = 0.1
+ADAM_BETAS = (0.9, 0.95)
+ADAM_EPS = 1e-8
+GRAD_CLIP_NORM = 1.0
+WARMUP_STEPS = 100
+ESTIMATED_TOTAL_STEPS = 2390
+MIN_LR_FRAC = 0.1
 ENABLE_COMPILE = True          # speed experiment: compile static model regions if sparse MoE permits it
 
 # ---------------------------------------------------------------------------
@@ -811,11 +800,10 @@ assert TOTAL_BATCH_SIZE % (WORLD_SIZE * DEVICE_BATCH_SIZE * MAX_SEQ_LEN) == 0, (
 grad_accum_steps = TOTAL_BATCH_SIZE // (WORLD_SIZE * DEVICE_BATCH_SIZE * MAX_SEQ_LEN)
 
 optimizer = raw_model.setup_optimizer(
-    unembedding_lr=UNEMBEDDING_LR,
-    embedding_lr=EMBEDDING_LR,
-    scalar_lr=SCALAR_LR,
+    adamw_lr=ADAMW_LR,
+    muon_lr=MUON_LR,
     adam_betas=ADAM_BETAS,
-    matrix_lr=MATRIX_LR,
+    adam_eps=ADAM_EPS,
     weight_decay=WEIGHT_DECAY,
 )
 
@@ -840,23 +828,18 @@ master_print(f"Gradient accumulation steps: {grad_accum_steps}")
 master_print(f"Eval batch size: {EVAL_BATCH_SIZE}")
 
 
-def get_lr_multiplier(progress):
-    if progress < WARMUP_RATIO:
-        return progress / WARMUP_RATIO if WARMUP_RATIO > 0 else 1.0
-    elif progress < 1.0 - WARMDOWN_RATIO:
-        return 1.0
-    else:
-        cooldown = (1.0 - progress) / WARMDOWN_RATIO
-        return cooldown * 1.0 + (1 - cooldown) * FINAL_LR_FRAC
+def get_lr_multiplier(step):
+    if step < WARMUP_STEPS:
+        return step / WARMUP_STEPS if WARMUP_STEPS > 0 else 1.0
+    decay_steps = max(1, ESTIMATED_TOTAL_STEPS - WARMUP_STEPS)
+    decay_progress = min(max((step - WARMUP_STEPS) / decay_steps, 0.0), 1.0)
+    cosine = 0.5 * (1.0 + math.cos(math.pi * decay_progress))
+    return MIN_LR_FRAC + (1.0 - MIN_LR_FRAC) * cosine
 
 
 def get_muon_momentum(step):
     frac = min(step / 300, 1)
     return (1 - frac) * 0.85 + frac * 0.95
-
-
-def get_weight_decay(progress):
-    return WEIGHT_DECAY * (1 - progress)
 
 
 def maybe_all_reduce_mean(tensor):
@@ -962,15 +945,14 @@ while True:
 
     # Progress and schedules.
     progress = min(total_training_time / TRAIN_TIME_BUDGET, 1.0)
-    lrm = get_lr_multiplier(progress)
+    lrm = get_lr_multiplier(step)
     muon_momentum = get_muon_momentum(step)
-    muon_weight_decay = get_weight_decay(progress)
     for group in optimizer.param_groups:
         group["lr"] = group["initial_lr"] * lrm
         if group["kind"] == "muon":
             group["momentum"] = muon_momentum
-            group["weight_decay"] = muon_weight_decay
 
+    torch.nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
     optimizer.step()
     model.zero_grad(set_to_none=True)
 
