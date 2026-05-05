@@ -559,6 +559,32 @@ Expected result:
 If dense stem is the right direction, two dense layers should match or beat the one-dense-layer BPB, or at least remain close with higher throughput and lower total params. If the second dense layer removes too much expert capacity/specialization, matched-step CE and final BPB should regress.
 
 Observed result:
+`val_bpb 0.938179`, `2778` steps, `728.2M` tokens, `29.3GB` peak VRAM, and `24.63%` MFU. Total params fell again to `438.2M`, while active params remained matched at `91.3M`. The gain over one dense layer is small but clean: `0.000331` BPB, about `0.035%` relative. Matched-step CE was mixed but close early: step `100` was effectively tied (`5.249734` vs `5.248774`), step `200` was slightly worse (`3.998785` vs `3.991079`), then step `360` and `600` were slightly better (`3.344945` vs `3.347321`, `3.109956` vs `3.112301`). Router health stayed excellent: mean load CV `0.0719`, max-layer load CV `0.0826`, mean max load `0.0723`, max-layer max load `0.0737`, mean router bias abs `0.0074`, and max router bias abs `0.0260`.
+
+Interpretation:
+Two dense early layers are better than one at fixed wall time, with higher throughput, fewer total parameters, and still-clean routing. The result does not prove a large sample-efficiency gain at fixed steps, but it does support the practical dense-stem hypothesis: the model benefits from pushing early routing later while preserving sparse upper-layer capacity.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current best
+
+Next run:
+Try first three layers dense. This tests where the dense-stem benefit saturates: if the third dense layer improves or stays close with more speed and clean routing, the useful sparse specialization may mostly live in the upper half of the network; if it regresses, two dense layers is likely the right compromise.
+
+### run 21: first three layers dense SwiGLU
+
+Kind/thread:
+architecture / dense-early-layers
+
+Pre-run hypothesis:
+Two dense early layers improved fixed-wall BPB while keeping the upper MoE layers healthy. A third dense layer may further reduce premature routing noise and improve throughput, but it also removes another full expert bank and leaves only five sparse layers for specialization.
+
+Expected result:
+If the dense-stem benefit has not saturated, three dense layers should match or beat the two-dense BPB at the same 450s budget, with clean load and higher throughput. If sparse expert capacity is now too shallow, matched-step CE and final BPB should regress despite speed.
+
+Observed result:
 pending
 
 Interpretation:
