@@ -429,6 +429,32 @@ Expected result:
 If the gate is useful, matched-step CE should be equal or better than XSA and final BPB should improve without severe throughput loss or new router load concentration. If it mainly shrinks attention or destabilizes the MoE, early CE should fall behind XSA despite healthy routing.
 
 Observed result:
+`val_bpb 0.940352`, `2511` steps, `658.2M` tokens, `30.7GB` peak VRAM, and `22.26%` MFU. Matched-step loss was slightly better than XSA after warmup: step `360` was `3.334208` vs XSA `3.336214`, step `600` was `3.100312` vs XSA `3.102649`, and step `2000` was `2.664697` vs XSA `2.666453`. Final BPB improved only slightly, by `0.000166`. Router health improved materially versus XSA: mean load CV `0.0636`, max-layer load CV `0.104`, mean max load `0.0714`, and max-layer max load `0.0747`. The learned gate moved away from identity: mean sigmoid of the gate bias ended at `0.874`, and gate weight RMS ended at `0.0246`.
+
+Interpretation:
+Headwise gated attention transfers, but the validation gain is small. The cleaner router load suggests attention-side modulation may reduce pressure on the MoE rather than perturb it. Since the gate bias decayed from the `0.95` init toward `0.87`, the next question is whether the model benefits from actual attenuation, or whether weight decay/global shrink is making the gate too conservative.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current best, but small margin
+
+Next run:
+Try a higher near-identity gate init (`0.98`) to test whether preserving more attention amplitude while retaining query-dependent head gates improves the small BPB gain.
+
+### run 16: headwise gated attention init 0.98
+
+Kind/thread:
+architecture / attention
+
+Pre-run hypothesis:
+The `0.95` gate run improved validation and router health, but the gate bias ended with mean sigmoid around `0.874`, so some of the effect may be broad attention shrink rather than useful sparse modulation. Initializing the gate closer to identity may preserve the query-dependent headwise mechanism while avoiding excessive attenuation from AdamW decay.
+
+Expected result:
+If the useful mechanism is query/head-dependent gating, `0.98` should match or beat the `0.95` result. If global attention attenuation is part of the gain, `0.98` may regress toward plain XSA.
+
+Observed result:
 pending
 
 Interpretation:
