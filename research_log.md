@@ -1,8 +1,26 @@
 # Research Log: Simple MoE Backbone Phase
 
-This log was reset after removing unproven extras from the working stack. The old lineage remains available in raw run logs and git history, but new decisions should compare against this stripped init baseline unless explicitly stated otherwise.
+This log was reset after removing unproven extras from the working stack. The old lineage remains available in raw run logs and git history. The leaderboard uses the LR-bracketed clean backbone (`02ba694`) as the quantitative zero point for this phase.
 
-## Current Phase Baseline
+## Fixed-Wall Leaderboard
+
+This table tracks fixed-wall runs that became the new healthy working best. Percent improvement is relative BPB reduction: `(old_bpb - new_bpb) / old_bpb`. The comparison baseline is `02ba694`, the clean simple backbone after the LR bracket (`val_bpb 0.954881`), rather than the deliberately rough init run.
+
+| rank | commit | new fixed-wall best | val_bpb | improvement vs previous best | cumulative vs clean baseline | note |
+|---:|---|---|---:|---:|---:|---|
+| 0 | `02ba694` | clean simple backbone, AdamW peak LR `0.003` | `0.954881` | -- | `0.000%` | baseline for this phase |
+| 1 | `ec33c7d` | fixed value mix `0.5*v1 + 0.5*vl` | `0.947597` | `0.763%` | `0.763%` | proved fixed value memory helps |
+| 2 | `188138f` | fixed value mix `0.75*v1 + 0.25*vl` | `0.945791` | `0.191%` | `0.952%` | first-heavy mix became value baseline |
+| 3 | `4a7630d` | sigmoid affinities + expert bias + load-balance `0.003` | `0.942848` | `0.311%` | `1.260%` | repaired zero-LB collapse; router healthy |
+| 4 | `3038052` | exclusive self-attention | `0.940518` | `0.247%` | `1.504%` | first clear attention-side win |
+| 5 | `5d210c5` | headwise attention gate, init `0.95` | `0.940352` | `0.018%` | `1.522%` | small but coherent gain |
+| 6 | `48fa497` | headwise attention gate, init `0.98` | `0.940076` | `0.029%` | `1.550%` | best no-dense attention stack |
+| 7 | `cbbe61b` | first FFN layer dense | `0.938510` | `0.167%` | `1.714%` | faster, fewer total params, clean routing |
+| 8 | `f48fb15` | first two FFN layers dense | `0.938179` | `0.035%` | `1.749%` | current fixed-wall best |
+
+Matched-step note: the two-dense stack stopped at the no-dense step count (`2515`) reached `0.939195`, beating the no-dense `0.940076` by `0.094%`. That supports a real sample-efficiency gain, but it is intentionally not a leaderboard row because it is not the fixed-wall protocol.
+
+## Initial Phase Baseline
 
 Commit:
 `153211f`
@@ -28,19 +46,19 @@ Sweep AdamW peak LR on the operator's log grid while keeping architecture fixed.
 ## Current Phase Best
 
 Commit:
-`3038052`
+`f48fb15`
 
 Status:
 keep
 
 Configuration difference from the simple init baseline:
-AdamW peak LR is `0.003`. Later attention layers use fixed first-value mixing `v = 0.75 * v_1 + 0.25 * v_l` for layers `1-7`. Router uses sigmoid affinities and loss-free expert bias for top-k selection only; output weights use clean selected sigmoid affinities. Load-balance coefficient is `0.003`, router z-loss coefficient remains `7.5e-4`. Attention uses exclusive self attention: after FlashAttention, each head subtracts the component of the attention output along that token's own mixed value vector before the output projection.
+AdamW peak LR is `0.003`. The first two FFN layers are dense SwiGLU layers with hidden size `3584`; the upper six FFN layers remain `16` expert top-2 MoE layers with expert hidden size `1792`. Later attention layers use fixed first-value mixing `v = 0.75 * v_1 + 0.25 * v_l` for layers `1-7`. Router uses sigmoid affinities and loss-free expert bias for top-k selection only; output weights use clean selected sigmoid affinities. Load-balance coefficient is `0.003`, router z-loss coefficient remains `7.5e-4`. Attention uses exclusive self-attention plus a headwise attention gate initialized to sigmoid `0.98`.
 
 Result:
-`val_bpb 0.940518`, improving the previous best by `0.002330` BPB. The run reached `2536` steps and `664.8M` tokens with `30.7GB` peak VRAM and `22.47%` MFU. CE-only train loss was `2.511834`, total train loss `2.515215`. Mean load CV was `0.094`, max-layer load CV `0.351`, mean max load `0.077`, and max-layer max load `0.122`. The router bias stayed small: mean abs `0.0113`, max abs `0.0799`, and max-layer mean abs `0.0279`.
+`val_bpb 0.938179`, improving the previous fixed-wall best by `0.000331` BPB and the clean comparison baseline by `1.749%`. The run reached `2778` steps and `728.2M` tokens with `29.3GB` peak VRAM and `24.63%` MFU. Total params fell to `438.2M`, while active params stayed at `91.3M`. Router health was very clean: mean load CV `0.0719`, max-layer load CV `0.0826`, mean max load `0.0723`, max-layer max load `0.0737`, mean router bias abs `0.0074`, and max router bias abs `0.0260`.
 
 Interpretation:
-The useful stack is now a damped first-value attention mix plus a DeepSeek-style router controller with a small amount of differentiable load-balance pressure, plus XSA in the attention output. XSA is the first attention-side architectural change in this phase that clearly improves BPB without breaking MoE routing, so it should be part of the working baseline.
+The useful stack is now a dense two-layer stem plus sparse upper MoE layers, damped first-value attention mix, DeepSeek-style sigmoid/bias routing with small differentiable load-balance pressure, XSA, and a near-identity headwise attention gate. The dense stem improves fixed-wall BPB partly by increasing throughput and update count. A matched-step diagnostic still beat the no-dense attention stack (`0.939195` vs `0.940076` at `2515` steps), so the gain is not purely a speed artifact.
 
 ## Runs
 
