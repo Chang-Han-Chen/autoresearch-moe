@@ -205,6 +205,7 @@ class GPTConfig:
     router_bias_eta: float = 1.0e-3
     router_bias_clamp: float = 0.25
     router_relu_routing: bool = False
+    router_relu_topk_affinity: bool = False
     router_relu_l1_init: float = 1.0e-8
     router_relu_l1_multiplier: float = 1.2
     exclusive_attention: bool = False
@@ -348,6 +349,7 @@ class TokenChoiceMoE(nn.Module):
         self.router_bias_eta = config.router_bias_eta
         self.router_bias_clamp = config.router_bias_clamp
         self.router_relu_routing = config.router_relu_routing
+        self.router_relu_topk_affinity = config.router_relu_topk_affinity
         self.router_relu_l1_multiplier = config.router_relu_l1_multiplier
         assert 1 <= self.top_k <= self.num_experts
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
@@ -471,6 +473,14 @@ class TokenChoiceMoE(nn.Module):
                 router_bias_max_abs = router_logits.new_zeros(())
                 load_ema_cv = router_logits.new_zeros(())
                 relu_l1_coef = self.router_relu_l1_coef.detach().to(dtype=router_logits.dtype)
+            elif self.router_relu_topk_affinity:
+                affinity = F.relu(router_logits)
+                score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+                route_scores = affinity + self.router_bias if self.router_expert_bias else affinity
+                _, top_idx = torch.topk(route_scores, K, dim=-1)
+                clean_scores = affinity.gather(1, top_idx)
+                top_weight = clean_scores / clean_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+                prob_mean = score_mass.mean(dim=0)
             elif self.router_sigmoid_affinity:
                 affinity = torch.sigmoid(router_logits)
                 score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
@@ -495,7 +505,11 @@ class TokenChoiceMoE(nn.Module):
                 aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
 
                 entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                if self.router_sigmoid_affinity:
+                if self.router_relu_topk_affinity:
+                    sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
+                    sigmoid_low_frac = (affinity <= 0).float().mean()
+                    sigmoid_high_frac = (affinity > 1.0).float().mean()
+                elif self.router_sigmoid_affinity:
                     sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
                     sigmoid_low_frac = (affinity < 0.01).float().mean()
                     sigmoid_high_frac = (affinity > 0.99).float().mean()
@@ -1100,11 +1114,12 @@ DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
-ROUTER_RELU_ROUTING = True
+ROUTER_RELU_ROUTING = False
+ROUTER_RELU_TOPK_AFFINITY = True
 ROUTER_RELU_L1_INIT = 1.0e-8
 ROUTER_RELU_L1_MULTIPLIER = 1.2
 ROUTER_SIGMOID_AFFINITY = False
-ROUTER_EXPERT_BIAS = False
+ROUTER_EXPERT_BIAS = True
 ROUTER_BIAS_EMA_BETA = 0.9
 ROUTER_BIAS_ETA = 1.0e-3
 ROUTER_BIAS_CLAMP = 0.25
@@ -1183,6 +1198,7 @@ config = GPTConfig(
     router_bias_eta=ROUTER_BIAS_ETA,
     router_bias_clamp=ROUTER_BIAS_CLAMP,
     router_relu_routing=ROUTER_RELU_ROUTING,
+    router_relu_topk_affinity=ROUTER_RELU_TOPK_AFFINITY,
     router_relu_l1_init=ROUTER_RELU_L1_INIT,
     router_relu_l1_multiplier=ROUTER_RELU_L1_MULTIPLIER,
     exclusive_attention=EXCLUSIVE_ATTENTION,
@@ -1745,6 +1761,7 @@ if IS_MASTER:
     print(f"dense_early_layers: {DENSE_EARLY_LAYERS}")
     print(f"dense_hidden_dim: {DENSE_HIDDEN_DIM}")
     print(f"router_relu_routing: {int(ROUTER_RELU_ROUTING)}")
+    print(f"router_relu_topk_affinity: {int(ROUTER_RELU_TOPK_AFFINITY)}")
     print(f"router_relu_l1_init: {ROUTER_RELU_L1_INIT:.6g}")
     print(f"router_relu_l1_multiplier: {ROUTER_RELU_L1_MULTIPLIER:.6g}")
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")

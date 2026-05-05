@@ -882,3 +882,29 @@ discard this exact form; do not run longer
 
 Next run:
 Try a smaller intervention that isolates the plausible failure modes. First choice: keep fixed top-k dispatch but replace selected sigmoid affinities with selected ReLU affinities using a much smaller router-logit scale or router AdamW if needed. This tests whether ReLU gate geometry is useful without variable active count, dense warmup, or dynamic dispatch overhead. If that fails too, ReMoE's win may depend on larger scale/Megatron dispatch details rather than this stack.
+
+### run 32: fixed-K selected ReLU affinities
+
+Kind/thread:
+router / differentiable-routing
+
+Pre-run hypothesis:
+True ReMoE failed either because variable-active dispatch/dense warmup is too costly at this scale, or because ReLU gate geometry itself is worse than sigmoid affinities in this stack. A fixed-K approximation isolates the latter: use `relu(router_logits)` for route scores and selected output weights, but keep the current top-k packed dispatch, expert bias, and `LOAD_BALANCE_LOSS_COEF=0.003`.
+
+Expected result:
+If the ReLU scoring geometry is useful once we remove variable-active overhead, matched-step loss should approach or beat the sigmoid-affinity baseline while throughput returns near baseline. If it is worse early and stays worse after warmup, the problem is likely the ReLU gate/scale itself rather than only ReMoE dispatch.
+
+Observed result:
+running
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+If fixed-K ReLU is close but not better, try smaller router-logit scale or move the router matrix to AdamW. If it is clearly bad, restore sigmoid-bias and switch to a different fundamental idea.
