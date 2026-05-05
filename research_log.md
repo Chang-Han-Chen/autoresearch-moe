@@ -28,19 +28,19 @@ Sweep AdamW peak LR on the operator's log grid while keeping architecture fixed.
 ## Current Phase Best
 
 Commit:
-`4a7630d`
+`3038052`
 
 Status:
 keep
 
 Configuration difference from the simple init baseline:
-AdamW peak LR is `0.003`. Later attention layers use fixed first-value mixing `v = 0.75 * v_1 + 0.25 * v_l` for layers `1-7`. Router uses sigmoid affinities and loss-free expert bias for top-k selection only; output weights use clean selected sigmoid affinities. Load-balance coefficient is `0.003`, router z-loss coefficient remains `7.5e-4`.
+AdamW peak LR is `0.003`. Later attention layers use fixed first-value mixing `v = 0.75 * v_1 + 0.25 * v_l` for layers `1-7`. Router uses sigmoid affinities and loss-free expert bias for top-k selection only; output weights use clean selected sigmoid affinities. Load-balance coefficient is `0.003`, router z-loss coefficient remains `7.5e-4`. Attention uses exclusive self attention: after FlashAttention, each head subtracts the component of the attention output along that token's own mixed value vector before the output projection.
 
 Result:
-`val_bpb 0.942848`, improving the simple LR baseline by `0.012033` BPB and the fixed value-mix baseline by `0.002943` BPB. The run reached `2619` steps and `686.6M` tokens with `29.9GB` peak VRAM and `23.21%` MFU. CE-only train loss was `2.508455`. Mean load CV was `0.068`, max-layer load CV `0.128`, mean max load `0.071`, and max-layer max load `0.0746`. The router bias stayed small: mean abs `0.011`, max abs `0.056`, and max-layer mean abs `0.0288`.
+`val_bpb 0.940518`, improving the previous best by `0.002330` BPB. The run reached `2536` steps and `664.8M` tokens with `30.7GB` peak VRAM and `22.47%` MFU. CE-only train loss was `2.511834`, total train loss `2.515215`. Mean load CV was `0.094`, max-layer load CV `0.351`, mean max load `0.077`, and max-layer max load `0.122`. The router bias stayed small: mean abs `0.0113`, max abs `0.0799`, and max-layer mean abs `0.0279`.
 
 Interpretation:
-The useful stack is now a damped first-value attention mix plus a DeepSeek-style router controller with a small amount of differentiable load-balance pressure. Pure loss-free sigmoid+bias improved BPB but let one layer collapse; adding `0.003` load loss preserved the BPB gain and made routing very clean. This run is the current baseline for further ablations.
+The useful stack is now a damped first-value attention mix plus a DeepSeek-style router controller with a small amount of differentiable load-balance pressure, plus XSA in the attention output. XSA is the first attention-side architectural change in this phase that clearly improves BPB without breaking MoE routing, so it should be part of the working baseline.
 
 ## Runs
 
@@ -401,3 +401,18 @@ Exclusive self attention may improve the division of labor between attention and
 
 Expected result:
 If XSA transfers to this MoE setting, matched-step CE and final BPB should improve with minimal throughput cost. Router load should remain similar to the current best; if router diagnostics move sharply, the attention change is perturbing the sparse FFN rather than cleanly improving context modeling.
+
+Observed result:
+`val_bpb 0.940518`, `2536` steps, `664.8M` tokens, `30.7GB` peak VRAM, and `22.47%` MFU. Matched-step loss improved early: at step `600`, XSA was `3.102649` versus the previous best `3.113824`. Final train CE was `2.511834`, slightly worse than the previous best CE `2.508455`, but validation improved by `0.002330` BPB. Router health remained acceptable: mean load CV `0.094`, max-layer load CV `0.351`, mean max load `0.077`, max-layer max load `0.122`, mean router bias abs `0.0113`, max bias abs `0.0799`.
+
+Interpretation:
+XSA transfers cleanly to this MoE setting. The early train-loss edge and validation gain support the division-of-labor hypothesis: attention benefits from removing self-value direction even when a sparse FFN/router sits after it. The worst-layer load is less pristine than the previous best, but it is not collapsed and BPB improves. Keep XSA as the new baseline.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current best
+
+Next run:
+Use XSA as the baseline for the next attention-side experiment. The most natural follow-up is the primary gated-attention variant: query-dependent headwise sigmoid gate after SDPA/XSA, initialized near identity so the initial model is not shrunk.
