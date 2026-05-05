@@ -869,16 +869,16 @@ Smoke result:
 The normal `DEVICE_BATCH_SIZE=32` run OOMed on the first backward because initial ReLU routing had about `8` active experts/token. With `DEVICE_BATCH_SIZE=16` and unchanged global batch tokens, a 3-step smoke run passed. Initial diagnostics: `router_relu_active_mean 7.999`, `mean_router_sigmoid_low_frac 0.500`, load CV `0.073`, `router_relu_l1_loss 25.64`, and peak VRAM `43.3GB`.
 
 Observed result:
-running
+Aborted at step `1080` after the stable sparse regime continued to trail the two-dense sigmoid-bias baseline at matched steps. The adaptive controller did hit the intended sparsity after the transition: early routing began near `8.0` active experts/token, undershot to around `1.5-1.7` active experts/token near steps `100-125`, then stabilized around `2.0` with L1 coefficient usually in the `0.03-0.06` range. However, matched-step loss stayed worse: step `200` was `4.353123` vs baseline `3.998785`; step `360` was `3.452043` vs `3.344945`; step `600` was `3.183080` vs `3.109956`; step `800` was `3.074525` vs `3.004887`; step `1000` was `2.990023` vs `2.927467`; step `1080` was `2.968253` vs `2.908268`. Throughput after sparsification was about `1.05M` tok/sec versus the baseline's `1.58-1.62M` tok/sec.
 
 Interpretation:
-pending
+The exact true-ReMoE implementation is not a keep: it is worse at matched steps and much worse at fixed wall time. The useful information is that sparsity control itself worked; the failure is more likely gate scale/optimization or ReLU routing geometry than collapse. Router entropy stayed high around `2.59`, load CV was much worse than the current sigmoid-bias router (`~0.34-0.37` vs `~0.07-0.09` late), and max expert load hovered around `0.11` for uniform `1/16=0.0625`. The high router entropy plus high load CV suggests ReLU gate magnitudes are not specializing in the same clean way as selected sigmoid affinities.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard this exact form; do not run longer
 
 Next run:
-If true ReMoE is better at matched steps but too slow at fixed wall time, optimize dispatch or test a fixed-K ReLU-survivor approximation to isolate routing geometry. If it is unstable, first try smaller router-logit initialization or moving the router matrix to AdamW before abandoning the idea.
+Try a smaller intervention that isolates the plausible failure modes. First choice: keep fixed top-k dispatch but replace selected sigmoid affinities with selected ReLU affinities using a much smaller router-logit scale or router AdamW if needed. This tests whether ReLU gate geometry is useful without variable active count, dense warmup, or dynamic dispatch overhead. If that fails too, ReMoE's win may depend on larger scale/Megatron dispatch details rather than this stack.
