@@ -811,6 +811,32 @@ Expected result:
 If the gate was the missing paired control, step `100`/`200` should improve relative to V-only and the step `360` gap should narrow. If it is worse by step `200` or `360`, abort and close fixed attention-depth scaling.
 
 Observed result:
+Aborted at step `300` because it was clearly worse than both V-only and the two-dense baseline. Step `100` was `5.325982` vs V-only `5.300067` and baseline `5.249734`; step `200` was `4.229460` vs V-only `4.089912` and baseline `3.998785`; step `300` was `3.545792`. Router load was healthy enough: at step `300`, router entropy was `1.442`, load CV `0.237`, and max load `0.091`.
+
+Interpretation:
+Pairing mixed-V scaling with attention-gate scaling did not repair the attention branch. It made the already-bad V-only run much worse. The deterministic scale is likely in the wrong location: shrinking internals reduces useful computation before projections/gating can adapt.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort; try output-side layer scaling instead
+
+Next run:
+Move the `1/sqrt(ell+1)` scale to the residual merge: multiply attention output and FFN output just before adding back to the residual stream, for attention, MoE, and dense MLP, with no V/gate/MLP input scaling.
+
+### run 30: output-side residual branch scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The fixed layer scale may have failed because it was applied inside the branch computation, starving V, gates, dense MLP inputs, or expert inputs before the branch could form a useful update. Applying `1/sqrt(layer_idx+1)` only to completed branch outputs immediately before residual addition preserves full internal attention, MoE, and dense MLP computation while controlling how much each branch writes into the residual stream.
+
+Expected result:
+If residual update magnitude is the real issue, this should avoid the severe warmup regression of V/gate/internal scaling and may improve post-warmup stability. Router health should remain normal because router inputs and expert computations are unscaled. If it is worse by step `360`, fixed deterministic residual output scaling is probably not helpful at this scale.
+
+Observed result:
 pending
 
 Interpretation:

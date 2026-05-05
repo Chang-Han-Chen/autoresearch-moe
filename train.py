@@ -217,6 +217,7 @@ class GPTConfig:
     value_mix_local_init: float = 0.5
     value_mix_gamma_init: float = 1.0
     attention_v_layer_scale: bool = False
+    residual_branch_layer_scale: bool = False
     dense_early_layers: int = 0
     dense_hidden_dim: int = 3584
 
@@ -511,6 +512,7 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = None
         self.ffn = None
+        self.branch_output_scale = 1.0 / math.sqrt(layer_idx + 1) if config.residual_branch_layer_scale else 1.0
         if layer_idx < config.dense_early_layers:
             self.ffn = DenseSwiGLU(config.n_embd, config.dense_hidden_dim)
         else:
@@ -518,6 +520,8 @@ class Block(nn.Module):
 
     def forward(self, x, first_v, cos_sin, window_size):
         attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
+        if self.branch_output_scale != 1.0:
+            attn_out = attn_out * self.branch_output_scale
         x = x + attn_out
         if self.moe is not None:
             ffn_out, aux_loss, stats = self.moe(norm(x))
@@ -525,6 +529,8 @@ class Block(nn.Module):
             ffn_out = self.ffn(norm(x))
             aux_loss = x.new_zeros(())
             stats = {}
+        if self.branch_output_scale != 1.0:
+            ffn_out = ffn_out * self.branch_output_scale
         x = x + ffn_out
         return x, aux_loss, stats, layer_v
 
@@ -989,7 +995,7 @@ EXCLUSIVE_ATTENTION = True
 HEADWISE_ATTENTION_GATE = True
 ATTENTION_GATE_INIT = 0.98
 ATTENTION_GATE_SCALE = 1.0
-ATTENTION_GATE_LAYER_SCALE = True
+ATTENTION_GATE_LAYER_SCALE = False
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
@@ -997,7 +1003,8 @@ VALUE_MIX_NORMALIZED = False
 VALUE_MIX_FIRST_INIT = 0.75
 VALUE_MIX_LOCAL_INIT = 0.25
 VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INIT ** 2)
-ATTENTION_V_LAYER_SCALE = True
+ATTENTION_V_LAYER_SCALE = False
+RESIDUAL_BRANCH_LAYER_SCALE = True
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
@@ -1074,6 +1081,7 @@ config = GPTConfig(
     value_mix_local_init=VALUE_MIX_LOCAL_INIT,
     value_mix_gamma_init=VALUE_MIX_GAMMA_INIT,
     attention_v_layer_scale=ATTENTION_V_LAYER_SCALE,
+    residual_branch_layer_scale=RESIDUAL_BRANCH_LAYER_SCALE,
 )
 master_print(f"Model config: {asdict(config)}")
 
@@ -1605,6 +1613,7 @@ if IS_MASTER:
     print(f"value_mix_start_layer: {VALUE_MIX_START_LAYER}")
     print(f"value_mix_normalized: {int(VALUE_MIX_NORMALIZED)}")
     print(f"attention_v_layer_scale: {int(ATTENTION_V_LAYER_SCALE)}")
+    print(f"residual_branch_layer_scale: {int(RESIDUAL_BRANCH_LAYER_SCALE)}")
     if value_mix_first_tensor is not None:
         print(f"mean_value_mix_first: {value_mix_first_tensor.mean().item():.6f}")
         print(f"min_value_mix_first:  {value_mix_first_tensor.min().item():.6f}")
