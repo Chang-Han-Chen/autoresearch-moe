@@ -338,3 +338,40 @@ discard as quality baseline, keep as diagnostic evidence
 
 Next run:
 Restore fixed `(0.75,0.25)` plus sigmoid/bias plus `0.003` load balance as the current baseline. Further gains should probably come from expert geometry, router controller tuning, or a smaller fixed value-mix ratio sweep around the first-heavy solution, not from learned normalized value mix.
+
+### run 12: fixed value mix 3/1 with sigmoid/bias repair
+
+Kind/thread:
+architecture / value-mix-router-interaction
+
+Pre-run hypothesis:
+A stronger first-value mix might become viable once sigmoid affinities, expert bias, and `LOAD_BALANCE_LOSS_COEF=0.003` protect the router from the load spikes seen in raw large-ratio value-mix runs.
+
+Expected result:
+If the earlier `(3,1)` failure was mostly router instability, matched-step CE should approach or beat the fixed `(0.75,0.25)` sigmoid/bias baseline while load CV and max load remain healthy.
+
+Observed result:
+Aborted at step `1093`. Routing stayed healthy enough, with max load mostly around `0.09-0.12`, but matched-step loss was consistently worse: about `3.145` vs `3.114` at step `600`, `2.971` vs `2.934` at step `1000`, and `2.946` at step `1093`.
+
+Interpretation:
+The stabilized router fixes the obvious load failure mode but does not make the stronger value mix useful. The problem is quality/optimization, not router collapse. Keep fixed `(0.75,0.25)` and stop value-ratio tuning for now.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort
+
+Next run:
+Move to fixed-budget expert granularity from the high-priority queue.
+
+### run 13: 32 experts top-4 hidden-896 with current router
+
+Kind/thread:
+architecture / fine-grained-moe
+
+Pre-run hypothesis:
+With active FFN width and total expert width held fixed, `32/top-4/896` gives many more expert combinations than `16/top-2/1792`. The earlier fine-grained run was tested before the current stabilized sigmoid/bias/value-mix baseline, so the new router may unlock useful specialization.
+
+Expected result:
+If expert granularity is the right structural direction, matched-step CE and final BPB should improve or at least remain close while router max load stays controlled. Throughput may fall; a quality win at matched steps would still be worth analyzing for acceleration.
