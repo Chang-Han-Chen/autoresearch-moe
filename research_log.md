@@ -849,4 +849,36 @@ Decision:
 discard/abort; restore the two-dense fixed-wall best stack
 
 Next run:
-Close fixed deterministic layer scaling for now. If revisited, use a gentler or learnable output-side scale rather than hard `1/sqrt(layer)`. Move back to higher-level architecture changes, with shared experts as the next high-signal candidate.
+Close fixed deterministic layer scaling for now. If revisited, use a gentler or learnable output-side scale rather than hard `1/sqrt(layer)`. Skip shared experts per operator guidance and move to higher-level router changes, starting with ReMoE.
+
+### run 31: ReMoE ReLU routing
+
+Kind/thread:
+router / differentiable-routing
+
+Pre-run hypothesis:
+Replacing hard top-k sigmoid routing with ReMoE may improve sample efficiency by making the selected expert set fully differentiable and allowing each token/layer to use a variable number of experts. This is especially relevant after the sigmoid-affinity plus expert-bias gains: the direction that helped was less global softmax competition and healthier load control, and ReMoE pushes that direction further by removing top-k discontinuity entirely.
+
+Expected result:
+At matched steps, ReMoE should beat or approach the current two-dense sigmoid-bias baseline if continuous routing gives useful expert-gradient signal. Fixed wall time is expected to be much worse initially because variable active count breaks the fixed-`K` packed dispatch assumption and early ReLU routing activates about half the experts. The first diagnostic therefore keeps global batch tokens fixed but halves the per-rank microbatch to avoid OOM, using gradient accumulation to preserve matched-step comparability.
+
+Implementation notes:
+Use true ReLU routing with no top-k operator in the ReLU path: `scores = relu(router_logits)`, `routing_map = scores > 0`, variable active pairs are sorted by expert and dispatched through the existing grouped GEMM path. The old sigmoid affinity and expert-bias path is disabled. The adaptive L1 controller uses the ReMoE defaults from the reference implementation: initial coefficient `1e-8`, multiplicative update `1.2`, and target average active count `TOP_K=2`. The L1 term uses the load-balanced form, reducing to average L1 gate mass under uniform routing. Compile is disabled for ReMoE because the number of active pairs is dynamic.
+
+Smoke result:
+The normal `DEVICE_BATCH_SIZE=32` run OOMed on the first backward because initial ReLU routing had about `8` active experts/token. With `DEVICE_BATCH_SIZE=16` and unchanged global batch tokens, a 3-step smoke run passed. Initial diagnostics: `router_relu_active_mean 7.999`, `mean_router_sigmoid_low_frac 0.500`, load CV `0.073`, `router_relu_l1_loss 25.64`, and peak VRAM `43.3GB`.
+
+Observed result:
+running
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+If true ReMoE is better at matched steps but too slow at fixed wall time, optimize dispatch or test a fixed-K ReLU-survivor approximation to isolate routing geometry. If it is unstable, first try smaller router-logit initialization or moving the router matrix to AdamW before abandoning the idea.
