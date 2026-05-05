@@ -733,6 +733,32 @@ Expected result:
 Run to at least step `1000` before decision. If the two scaling mechanisms compound constructively, it should keep the step `100`/`200` warmup benefit from MLP quarter-power and narrow or reverse the step `600`/`1000` regression. Router health should stay comparable to baseline because the router still sees unscaled `norm(x)`.
 
 Observed result:
+Aborted after the required `1000`-step minimum; the run reached step `1200`. Unlike MLP-only quarter-power, this combined scale did not even preserve the warmup gain: step `100` was `5.251647` vs baseline `5.249734`, and step `200` was `4.014865` vs `3.998785`. The post-warmup gap remained clearly bad: step `360` was `3.358780` vs `3.344945`, step `600` was `3.124423` vs `3.109956`, step `800` was `3.020642` vs `3.004887`, step `1000` was `2.944048` vs `2.927467`, and step `1200` was `2.872284` vs `2.856051`. Routing stayed healthy: at step `1000`, router entropy was `1.205`, load CV `0.076`, and max load `0.072`.
+
+Interpretation:
+Adding attention V depth scaling to MLP quarter-power scaling did not repair the failure. It made the early behavior worse than MLP-only scaling and kept the same late underpowered-branch shape. The router was clean, so this is still not a MoE-health problem; the fixed depth scale is reducing useful residual-branch computation.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort; iterate once more by also scaling the headwise attention gate as requested
+
+Next run:
+Scale the headwise attention gate by one-based `1/sqrt(ell)` in addition to the current MLP quarter-power and attention V scaling, while still leaving router logits, Q/K normalization, and the LM head unscaled.
+
+### run 27: MLP quarter-power plus V and gate depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The combined MLP+V scale may still have mismatched the attention branch because the learned headwise gate remained near identity while V was depth-scaled. Multiplying the headwise attention gate by one-based `1/sqrt(ell)` makes the post-attention modulation explicitly depth-aware too. This is a stronger attention-branch downscale, so it is likely risky, but it is a clean test of whether the gate should participate in the same residual-depth schedule.
+
+Expected result:
+If the attention gate was the missing control knob, the regression from run 26 should narrow by step `360`/`600` without hurting router health. If the model is simply underpowered by fixed depth scaling, this should be worse than run 26, especially in deeper-layer sample efficiency. Router logits, Q/K normalization, and the LM head remain unscaled.
+
+Observed result:
 pending
 
 Interpretation:

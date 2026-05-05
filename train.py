@@ -208,6 +208,7 @@ class GPTConfig:
     headwise_attention_gate: bool = False
     attention_gate_init: float = 0.95
     attention_gate_scale: float = 1.0
+    attention_gate_layer_scale: bool = False
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
     value_mix_start_layer: int = 1
@@ -236,6 +237,9 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.c_attn_gate = nn.Linear(self.n_embd, self.n_head, bias=True) if config.headwise_attention_gate else None
         self.attention_gate_scale = config.attention_gate_scale
+        self.attention_gate_layer_scale = (
+            1.0 / math.sqrt(layer_idx + 1) if config.attention_gate_layer_scale else 1.0
+        )
         self.qk_gamma = nn.Parameter(torch.ones(()))
         self.exclusive_attention = config.exclusive_attention
         self.v_layer_scale = 1.0 / math.sqrt(layer_idx + 1) if config.attention_v_layer_scale else 1.0
@@ -297,7 +301,8 @@ class CausalSelfAttention(nn.Module):
             self_v_dir = F.normalize(self_v.float(), dim=-1).to(dtype=y.dtype)
             y = y - (y * self_v_dir).sum(dim=-1, keepdim=True) * self_v_dir
         if self.c_attn_gate is not None:
-            gate = self.attention_gate_scale * torch.sigmoid(self.c_attn_gate(x)).view(B, T, self.n_head, 1)
+            gate_scale = self.attention_gate_scale * self.attention_gate_layer_scale
+            gate = gate_scale * torch.sigmoid(self.c_attn_gate(x)).view(B, T, self.n_head, 1)
             y = y * gate.to(dtype=y.dtype)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
@@ -991,6 +996,7 @@ EXCLUSIVE_ATTENTION = True
 HEADWISE_ATTENTION_GATE = True
 ATTENTION_GATE_INIT = 0.98
 ATTENTION_GATE_SCALE = 1.0
+ATTENTION_GATE_LAYER_SCALE = True
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
@@ -1067,6 +1073,7 @@ config = GPTConfig(
     headwise_attention_gate=HEADWISE_ATTENTION_GATE,
     attention_gate_init=ATTENTION_GATE_INIT,
     attention_gate_scale=ATTENTION_GATE_SCALE,
+    attention_gate_layer_scale=ATTENTION_GATE_LAYER_SCALE,
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
     value_mix_start_layer=VALUE_MIX_START_LAYER,
@@ -1595,6 +1602,7 @@ if IS_MASTER:
     print(f"exclusive_attention: {int(EXCLUSIVE_ATTENTION)}")
     print(f"headwise_attention_gate: {int(HEADWISE_ATTENTION_GATE)}")
     print(f"attention_gate_scale: {ATTENTION_GATE_SCALE:.6f}")
+    print(f"attention_gate_layer_scale: {int(ATTENTION_GATE_LAYER_SCALE)}")
     if attention_gate_bias_sigmoid_tensor is not None:
         print(f"mean_attention_gate_bias_sigmoid: {attention_gate_bias_sigmoid_tensor.mean().item():.6f}")
         print(f"min_attention_gate_bias_sigmoid:  {attention_gate_bias_sigmoid_tensor.min().item():.6f}")
