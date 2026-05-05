@@ -215,6 +215,8 @@ class GPTConfig:
     value_mix_first_init: float = 0.5
     value_mix_local_init: float = 0.5
     value_mix_gamma_init: float = 1.0
+    attention_v_layer_scale: bool = False
+    mlp_input_layer_scale: bool = False
     dense_early_layers: int = 0
     dense_hidden_dim: int = 3584
 
@@ -236,6 +238,7 @@ class CausalSelfAttention(nn.Module):
         self.attention_gate_scale = config.attention_gate_scale
         self.qk_gamma = nn.Parameter(torch.ones(()))
         self.exclusive_attention = config.exclusive_attention
+        self.v_layer_scale = 1.0 / math.sqrt(layer_idx + 1) if config.attention_v_layer_scale else 1.0
         self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
         self.value_mix_learned = config.value_mix_learned
         self.value_mix_normalized = config.value_mix_normalized
@@ -273,6 +276,8 @@ class CausalSelfAttention(nn.Module):
                 denom = torch.sqrt(first_coef.float().square() + local_coef.float().square()).clamp_min(1e-6)
                 mixed_v = self.value_mix_gamma.to(dtype=v.dtype) * mixed_v / denom.to(dtype=v.dtype)
             v = mixed_v
+        if self.v_layer_scale != 1.0:
+            v = v * self.v_layer_scale
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -393,7 +398,7 @@ class TokenChoiceMoE(nn.Module):
         self.router_bias.sub_(self.router_bias.mean())
         self.router_bias.clamp_(-self.router_bias_clamp, self.router_bias_clamp)
 
-    def forward(self, x):
+    def forward(self, x, expert_input_scale=1.0):
         B, T, C = x.shape
         flat_x = x.reshape(B * T, C)
         N = flat_x.size(0)
@@ -455,6 +460,8 @@ class TokenChoiceMoE(nn.Module):
         sorted_expert = choice_expert.index_select(0, sort_order)
         sorted_token = choice_token.index_select(0, sort_order)
         sorted_x = flat_x.index_select(0, sorted_token).to(dtype=self.w_gate.dtype)
+        if expert_input_scale != 1.0:
+            sorted_x = sorted_x * expert_input_scale
         sorted_weight = top_weight.reshape(-1).index_select(0, sort_order).to(dtype=sorted_x.dtype)
         expert_counts = torch.bincount(sorted_expert, minlength=E).to(torch.int32)
         expert_offsets = torch.cumsum(expert_counts, dim=0, dtype=torch.int32)
@@ -502,6 +509,7 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = None
         self.ffn = None
+        self.mlp_input_scale = (layer_idx + 1) ** -0.25 if config.mlp_input_layer_scale else 1.0
         if layer_idx < config.dense_early_layers:
             self.ffn = DenseSwiGLU(config.n_embd, config.dense_hidden_dim)
         else:
@@ -511,9 +519,12 @@ class Block(nn.Module):
         attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
         x = x + attn_out
         if self.moe is not None:
-            ffn_out, aux_loss, stats = self.moe(norm(x))
+            ffn_out, aux_loss, stats = self.moe(norm(x), expert_input_scale=self.mlp_input_scale)
         else:
-            ffn_out = self.ffn(norm(x))
+            ffn_x = norm(x)
+            if self.mlp_input_scale != 1.0:
+                ffn_x = ffn_x * self.mlp_input_scale
+            ffn_out = self.ffn(ffn_x)
             aux_loss = x.new_zeros(())
             stats = {}
         x = x + ffn_out
@@ -987,6 +998,8 @@ VALUE_MIX_NORMALIZED = False
 VALUE_MIX_FIRST_INIT = 0.75
 VALUE_MIX_LOCAL_INIT = 0.25
 VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INIT ** 2)
+ATTENTION_V_LAYER_SCALE = True
+MLP_INPUT_LAYER_SCALE = True
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
@@ -1061,6 +1074,8 @@ config = GPTConfig(
     value_mix_first_init=VALUE_MIX_FIRST_INIT,
     value_mix_local_init=VALUE_MIX_LOCAL_INIT,
     value_mix_gamma_init=VALUE_MIX_GAMMA_INIT,
+    attention_v_layer_scale=ATTENTION_V_LAYER_SCALE,
+    mlp_input_layer_scale=MLP_INPUT_LAYER_SCALE,
 )
 master_print(f"Model config: {asdict(config)}")
 
@@ -1590,6 +1605,8 @@ if IS_MASTER:
     print(f"value_mix_learned: {int(VALUE_MIX_LEARNED)}")
     print(f"value_mix_start_layer: {VALUE_MIX_START_LAYER}")
     print(f"value_mix_normalized: {int(VALUE_MIX_NORMALIZED)}")
+    print(f"attention_v_layer_scale: {int(ATTENTION_V_LAYER_SCALE)}")
+    print(f"mlp_input_layer_scale: {int(MLP_INPUT_LAYER_SCALE)}")
     if value_mix_first_tensor is not None:
         print(f"mean_value_mix_first: {value_mix_first_tensor.mean().item():.6f}")
         print(f"min_value_mix_first:  {value_mix_first_tensor.min().item():.6f}")

@@ -720,3 +720,29 @@ discard/abort; restore prior two-dense baseline behavior
 
 Next run:
 Close fixed depth-dependent MLP input scaling for now. If residual branch scaling is revisited, it should be learned, floor-clamped close to one, or output-side rather than input-side. Move back to larger architecture ideas such as shared experts.
+
+### run 26: MLP quarter-power plus V depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The MLP-only quarter-power run preserved early warmup gains longer than raw branch scaling, but still underpowered the post-warmup model. Adding the previous attention value scale may reduce late-layer attention branch magnitude at the same time as the SwiGLU-aware MLP/expert input scale, potentially improving residual-branch balance without touching router logits, Q/K normalization, head gates, or the LM head.
+
+Expected result:
+Run to at least step `1000` before decision. If the two scaling mechanisms compound constructively, it should keep the step `100`/`200` warmup benefit from MLP quarter-power and narrow or reverse the step `600`/`1000` regression. Router health should stay comparable to baseline because the router still sees unscaled `norm(x)`.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending
