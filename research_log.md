@@ -455,6 +455,32 @@ Expected result:
 If the useful mechanism is query/head-dependent gating, `0.98` should match or beat the `0.95` result. If global attention attenuation is part of the gain, `0.98` may regress toward plain XSA.
 
 Observed result:
+`val_bpb 0.940076`, `2515` steps, `659.3M` tokens, `30.7GB` peak VRAM, and `22.30%` MFU. Matched-step loss was essentially tied with the `0.95` gate run at steps `1000` and `1200`, slightly better by step `1600` (`2.755895` vs `2.756617`), and better on validation by `0.000276` BPB. Router health stayed strong: mean load CV `0.0573`, max-layer load CV `0.119`, mean max load `0.0700`, and max-layer max load `0.0833`. The gate stayed closer to identity than the `0.95` run: final mean bias sigmoid was `0.928` instead of `0.874`, with weight RMS `0.0266`.
+
+Interpretation:
+Higher near-identity gate init is better. This argues against the gain coming mainly from global attention attenuation; preserving more attention amplitude while allowing learned query/head modulation improves validation. The final router load remains cleaner than XSA and comparable to the `0.95` gate run.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current best
+
+Next run:
+Try `ATTENTION_GATE_INIT=0.99` as one more targeted gate-init iteration. If this also improves, the right default is likely very close to identity; if it regresses, keep `0.98` and move to a different attention-side intervention.
+
+### run 17: headwise gated attention init 0.99
+
+Kind/thread:
+architecture / attention
+
+Pre-run hypothesis:
+Since `0.98` beat `0.95`, the headwise gate may want to begin even closer to identity. `0.99` should preserve more attention amplitude while still giving the model a query-dependent per-head attenuation path.
+
+Expected result:
+If identity-preserving gating is the key, `0.99` should match or beat the `0.98` validation BPB without router regression. If the best point needs some initial attenuation, `0.99` should lose despite similar matched-step CE.
+
+Observed result:
 pending
 
 Interpretation:
