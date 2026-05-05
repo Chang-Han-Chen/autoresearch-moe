@@ -999,16 +999,16 @@ Expected result:
 Lower zero-active fraction, lower max-layer load CV, and similar or better matched-step CE than run 35. A useful result should keep active count close to `1.0` without any layer falling near zero active tokens.
 
 Observed result:
-running
+Aborted at step `1437` after the operator chose to wrap up. The global controller improved the same-geometry ReMoE run but did not get close to the best top-k/sigmoid stack. Matched-step CE versus per-layer L1 improved at every checkpoint: step `360` `3.432810` vs `3.453835`; step `600` `3.176948` vs `3.195967`; step `800` `3.072073` vs `3.092417`; step `1000` `2.989413` vs `3.011133`; step `1437` `2.885721` vs `2.907913`. However, it still trailed the current best: step `360` best was `3.344945`, step `600` `3.109956`, step `800` `3.004887`, step `1000` `2.927467`, and step `1437` `2.796873`. Load health remained bad and worsened late: at step `1437`, load CV was `0.770`, max load `0.328`, and active count was `1.00`.
 
 Interpretation:
-pending
+Global L1 was the right repair direction, but not enough. It made ReMoE more sample-efficient than the per-layer controller while keeping the mean active count on target, but the core failure remained load concentration. Compared with the best sigmoid-bias stack, ReMoE's load CV was roughly an order of magnitude worse late in training. This is a reasonable stopping point for ReMoE in this codebase unless we want to spend a separate cycle on a more faithful dispatcher/optimizer stack and a matched top-k control.
 
 Agrees with hypothesis:
-pending
+partial
 
 Decision:
-pending
+discard/stop; restore best sigmoid-bias setup
 
 Next run:
-If global L1 fixes routing health, run to final BPB or longer matched steps. If it still produces many zero-active tokens, try a gentler controller multiplier or minimum-active fallback.
+The active code configuration is restored to the current best fixed-wall setup: `16/top-2/1792`, first two FFN layers dense, fixed value mix, sigmoid affinities, expert bias, `LOAD_BALANCE_LOSS_COEF=0.003`, XSA, and headwise attention gate init `0.98`. ReMoE should be considered explored enough for now; the next major idea should come from a different family.
