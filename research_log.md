@@ -655,16 +655,16 @@ Expected result:
 If the scale is helpful, BPB should improve or matched-step CE should be lower with little throughput or memory change. QK gamma may compensate upward because Q/K are still explicitly RMS-normalized after projection, while V, attention gates, routers, and FFNs see the reduced deeper-layer input scale. Router health should stay clean; if max load rises or BPB worsens, the scale is probably starving upper MoE layers.
 
 Observed result:
-pending
+Aborted at step `887` after the post-warmup comparison became clearly worse. The run looked good during warmup: step `100` was `5.187956` vs the two-dense baseline `5.249734`, and step `200` was `3.989570` vs `3.998785`. After warmup it reversed hard: step `360` was `3.388878` vs baseline `3.344945`, step `600` was `3.153001` vs `3.109956`, and step `800` was `3.047116` vs `3.004887`. Router load was healthy rather than collapsed: at step `800`, load CV was `0.107` and max load was `0.076`.
 
 Interpretation:
-pending
+Depth-scaled pre-norm improves very early warmup but starves the useful upper-layer computation once the main training regime starts. Because Q/K are explicitly re-normalized inside attention, the harmful effect is probably through V, attention gates, routers, and FFNs, especially in upper layers where the scale is as low as `1/sqrt(8)`. This is not a router-health failure; it is an underpowered residual branch failure.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard/abort; restore the prior two-dense baseline behavior
 
 Next run:
-pending
+Do not use raw `1/sqrt(ell)` pre-norm scaling. If this family is revisited, try a much gentler learned or floor-clamped scale, but it is lower priority than the shared-expert idea.
