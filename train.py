@@ -279,21 +279,26 @@ class TokenChoiceMoE(nn.Module):
         # under the outer bf16 autocast context.
         with torch.amp.autocast(device_type="cuda", enabled=False):
             router_logits = self.router(flat_x.float())      # [N, E]
-            router_probs = F.softmax(router_logits, dim=-1)  # [N, E]
-            top_logits, top_idx = torch.topk(router_logits, K, dim=-1)
-            top_weight = F.softmax(top_logits, dim=-1)       # [N, K]
+            router_probs = F.softmax(router_logits, dim=-1)  # diagnostic-only, comparable to softmax baseline
+            affinity = torch.sigmoid(router_logits)          # [N, E], independent expert scores
+            score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+            top_scores, top_idx = torch.topk(affinity, K, dim=-1)
+            top_weight = top_scores / top_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
 
             # Router regularization. The hard load fraction is intentionally
             # detached; gradients flow through mean router probability, not
             # through the non-differentiable top-k indices.
             selected_one_hot = F.one_hot(top_idx, num_classes=E).float()  # [N, K, E]
             load_frac = selected_one_hot.sum(dim=(0, 1)) / float(N * K)
-            prob_mean = router_probs.mean(dim=0)
+            prob_mean = score_mass.mean(dim=0)
             load_balance_loss = E * torch.sum(load_frac.detach() * prob_mean)
             z_loss = torch.logsumexp(router_logits, dim=-1).square().mean()
             aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
 
             entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
+            sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
+            sigmoid_low_frac = (affinity < 0.01).float().mean()
+            sigmoid_high_frac = (affinity > 0.99).float().mean()
             load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
             max_load = load_frac.max()
 
@@ -326,6 +331,9 @@ class TokenChoiceMoE(nn.Module):
             "router_z_loss": z_loss.detach(),
             "router_lb_loss": load_balance_loss.detach(),
             "router_aux_loss": aux_loss.detach(),
+            "router_sigmoid_mass_entropy": sigmoid_mass_entropy.detach(),
+            "router_sigmoid_low_frac": sigmoid_low_frac.detach(),
+            "router_sigmoid_high_frac": sigmoid_high_frac.detach(),
         }
         return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
 
@@ -904,6 +912,21 @@ def reduce_router_stats(stats):
         max_key="max_layer_router_z_loss",
         old_key="router_z_loss",
     )
+    add_layer_summary(
+        "layer_router_sigmoid_mass_entropy",
+        mean_key="mean_router_sigmoid_mass_entropy",
+        min_key="min_layer_router_sigmoid_mass_entropy",
+    )
+    add_layer_summary(
+        "layer_router_sigmoid_low_frac",
+        mean_key="mean_router_sigmoid_low_frac",
+        max_key="max_layer_router_sigmoid_low_frac",
+    )
+    add_layer_summary(
+        "layer_router_sigmoid_high_frac",
+        mean_key="mean_router_sigmoid_high_frac",
+        max_key="max_layer_router_sigmoid_high_frac",
+    )
 
     summary.setdefault("mean_router_bias_abs", 0.0)
     summary.setdefault("max_router_bias_abs", 0.0)
@@ -1241,6 +1264,12 @@ if IS_MASTER:
         "router_z_loss",
         "mean_router_z_loss",
         "max_layer_router_z_loss",
+        "mean_router_sigmoid_mass_entropy",
+        "min_layer_router_sigmoid_mass_entropy",
+        "mean_router_sigmoid_low_frac",
+        "max_layer_router_sigmoid_low_frac",
+        "mean_router_sigmoid_high_frac",
+        "max_layer_router_sigmoid_high_frac",
         "mean_router_bias_abs",
         "max_router_bias_abs",
         "max_layer_router_bias_abs",
