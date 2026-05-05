@@ -199,6 +199,10 @@ class GPTConfig:
     moe_hidden_dim: int = 1792
     router_z_loss_coef: float = 1.0e-3
     load_balance_loss_coef: float = 1.0e-2
+    value_mix_enabled: bool = False
+    value_mix_learned: bool = True
+    value_mix_first_init: float = 0.5
+    value_mix_local_init: float = 0.5
 
 
 class CausalSelfAttention(nn.Module):
@@ -215,12 +219,30 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
+        self.value_mix_enabled = config.value_mix_enabled and layer_idx > 0
+        self.value_mix_learned = config.value_mix_learned
+        if self.value_mix_enabled:
+            if self.value_mix_learned:
+                self.value_mix_first = nn.Parameter(torch.empty(()))
+                self.value_mix_local = nn.Parameter(torch.empty(()))
+            else:
+                self.register_buffer("value_mix_first", torch.empty(()), persistent=True)
+                self.register_buffer("value_mix_local", torch.empty(()), persistent=True)
+        else:
+            self.value_mix_first = None
+            self.value_mix_local = None
 
-    def forward(self, x, cos_sin, window_size):
+    def forward(self, x, first_v, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
+        layer_v = v
+        if self.value_mix_enabled and first_v is not None:
+            v = (
+                self.value_mix_first.to(dtype=v.dtype) * first_v.to(dtype=v.dtype) +
+                self.value_mix_local.to(dtype=v.dtype) * v
+            )
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -230,7 +252,7 @@ class CausalSelfAttention(nn.Module):
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
-        return y
+        return y, layer_v
 
 
 class SwiGLUExpert(nn.Module):
@@ -279,26 +301,21 @@ class TokenChoiceMoE(nn.Module):
         # under the outer bf16 autocast context.
         with torch.amp.autocast(device_type="cuda", enabled=False):
             router_logits = self.router(flat_x.float())      # [N, E]
-            router_probs = F.softmax(router_logits, dim=-1)  # diagnostic-only, comparable to softmax baseline
-            affinity = torch.sigmoid(router_logits)          # [N, E], independent expert scores
-            score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
-            top_scores, top_idx = torch.topk(affinity, K, dim=-1)
-            top_weight = top_scores / top_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+            router_probs = F.softmax(router_logits, dim=-1)  # [N, E]
+            top_logits, top_idx = torch.topk(router_logits, K, dim=-1)
+            top_weight = F.softmax(top_logits, dim=-1)       # [N, K]
 
             # Router regularization. The hard load fraction is intentionally
             # detached; gradients flow through mean router probability, not
             # through the non-differentiable top-k indices.
             selected_one_hot = F.one_hot(top_idx, num_classes=E).float()  # [N, K, E]
             load_frac = selected_one_hot.sum(dim=(0, 1)) / float(N * K)
-            prob_mean = score_mass.mean(dim=0)
+            prob_mean = router_probs.mean(dim=0)
             load_balance_loss = E * torch.sum(load_frac.detach() * prob_mean)
             z_loss = torch.logsumexp(router_logits, dim=-1).square().mean()
             aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
 
             entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
-            sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
-            sigmoid_low_frac = (affinity < 0.01).float().mean()
-            sigmoid_high_frac = (affinity > 0.99).float().mean()
             load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
             max_load = load_frac.max()
 
@@ -331,9 +348,6 @@ class TokenChoiceMoE(nn.Module):
             "router_z_loss": z_loss.detach(),
             "router_lb_loss": load_balance_loss.detach(),
             "router_aux_loss": aux_loss.detach(),
-            "router_sigmoid_mass_entropy": sigmoid_mass_entropy.detach(),
-            "router_sigmoid_low_frac": sigmoid_low_frac.detach(),
-            "router_sigmoid_high_frac": sigmoid_high_frac.detach(),
         }
         return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
 
@@ -351,12 +365,12 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = TokenChoiceMoE(config)
 
-    def forward(self, x, cos_sin, window_size):
-        attn_out = self.attn(norm(x), cos_sin, window_size)
+    def forward(self, x, first_v, cos_sin, window_size):
+        attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
         x = x + attn_out
         moe_out, aux_loss, stats = self.moe(norm(x))
         x = x + moe_out
-        return x, aux_loss, stats
+        return x, aux_loss, stats, layer_v
 
 
 class GPT(nn.Module):
@@ -402,6 +416,9 @@ class GPT(nn.Module):
             init_weight(block.attn.c_v.weight, self.config.n_embd)
             init_weight(block.attn.c_proj.weight, self.config.n_embd)
             block.attn.qk_gamma.fill_(1.0)
+            if block.attn.value_mix_enabled:
+                block.attn.value_mix_first.fill_(self.config.value_mix_first_init)
+                block.attn.value_mix_local.fill_(self.config.value_mix_local_init)
 
             init_weight(block.moe.router.weight, self.config.n_embd)
             init_weight(block.moe.w_gate, self.config.n_embd)
@@ -482,6 +499,12 @@ class GPT(nn.Module):
     def setup_optimizer(self, adamw_lr=0.003,
                         weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
         attention_scalar_params = [block.attn.qk_gamma for block in self.transformer.h]
+        attention_scalar_params.extend(
+            param
+            for block in self.transformer.h
+            if block.attn.value_mix_enabled and block.attn.value_mix_learned
+            for param in (block.attn.value_mix_first, block.attn.value_mix_local)
+        )
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
@@ -535,11 +558,19 @@ class GPT(nn.Module):
         x = norm(x)
         if self.grad_diag_enabled:
             self.last_first_v_resid_for_diag = None
+        first_v = None
         aux_loss = x.new_zeros(())
         stats_by_key = {}
 
         for i, block in enumerate(self.transformer.h):
-            x, block_aux, block_stats = block(x, cos_sin, self.window_sizes[i])
+            x, block_aux, block_stats, layer_v = block(x, first_v, cos_sin, self.window_sizes[i])
+            if first_v is None:
+                if self.grad_diag_enabled and torch.is_grad_enabled():
+                    first_v = layer_v.clone()
+                    first_v.retain_grad()
+                    self.last_first_v_resid_for_diag = first_v
+                else:
+                    first_v = layer_v
             aux_loss = aux_loss + block_aux
             for key, value in block_stats.items():
                 stats_by_key.setdefault(key, []).append(value)
@@ -728,6 +759,10 @@ TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
+VALUE_MIX_ENABLED = True
+VALUE_MIX_LEARNED = True
+VALUE_MIX_FIRST_INIT = 0.5
+VALUE_MIX_LOCAL_INIT = 0.5
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
@@ -783,6 +818,10 @@ config = GPTConfig(
     moe_hidden_dim=MOE_HIDDEN_DIM,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
+    value_mix_enabled=VALUE_MIX_ENABLED,
+    value_mix_learned=VALUE_MIX_LEARNED,
+    value_mix_first_init=VALUE_MIX_FIRST_INIT,
+    value_mix_local_init=VALUE_MIX_LOCAL_INIT,
 )
 master_print(f"Model config: {asdict(config)}")
 
@@ -973,8 +1012,8 @@ def collect_grad_diag(model):
     alpha_params = [
         param
         for block in blocks
-        for param in [getattr(block.attn, "value_resid_alpha", None)]
-        if param is not None
+        if block.attn.value_mix_enabled and block.attn.value_mix_learned
+        for param in (block.attn.value_mix_first, block.attn.value_mix_local)
     ]
     alpha_values = [p.detach().float().abs() for p in alpha_params]
     alpha_grads = [p.grad.detach().float().abs() for p in alpha_params if p.grad is not None]
@@ -1216,13 +1255,18 @@ if IS_DISTRIBUTED:
     dist.all_reduce(peak_vram_tensor, op=dist.ReduceOp.MAX)
 peak_vram_mb = float(peak_vram_tensor.item())
 qk_gamma_tensor = torch.stack([block.attn.qk_gamma.detach().float() for block in raw_model.transformer.h])
-value_resid_alpha_values = [
-    param.detach().float()
+value_mix_first_values = [
+    block.attn.value_mix_first.detach().float()
     for block in raw_model.transformer.h
-    for param in [getattr(block.attn, "value_resid_alpha", None)]
-    if param is not None
+    if block.attn.value_mix_enabled
 ]
-value_resid_alpha_tensor = torch.stack(value_resid_alpha_values) if value_resid_alpha_values else None
+value_mix_local_values = [
+    block.attn.value_mix_local.detach().float()
+    for block in raw_model.transformer.h
+    if block.attn.value_mix_enabled
+]
+value_mix_first_tensor = torch.stack(value_mix_first_values) if value_mix_first_values else None
+value_mix_local_tensor = torch.stack(value_mix_local_values) if value_mix_local_values else None
 
 if IS_MASTER:
     print("---")
@@ -1245,10 +1289,15 @@ if IS_MASTER:
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
-    if value_resid_alpha_tensor is not None:
-        print(f"mean_value_resid_alpha: {value_resid_alpha_tensor.mean().item():.6f}")
-        print(f"min_value_resid_alpha:  {value_resid_alpha_tensor.min().item():.6f}")
-        print(f"max_value_resid_alpha:  {value_resid_alpha_tensor.max().item():.6f}")
+    print(f"value_mix_enabled: {int(VALUE_MIX_ENABLED)}")
+    print(f"value_mix_learned: {int(VALUE_MIX_LEARNED)}")
+    if value_mix_first_tensor is not None:
+        print(f"mean_value_mix_first: {value_mix_first_tensor.mean().item():.6f}")
+        print(f"min_value_mix_first:  {value_mix_first_tensor.min().item():.6f}")
+        print(f"max_value_mix_first:  {value_mix_first_tensor.max().item():.6f}")
+        print(f"mean_value_mix_local: {value_mix_local_tensor.mean().item():.6f}")
+        print(f"min_value_mix_local:  {value_mix_local_tensor.min().item():.6f}")
+        print(f"max_value_mix_local:  {value_mix_local_tensor.max().item():.6f}")
     print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
     print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
     for key in [
