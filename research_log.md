@@ -533,6 +533,32 @@ Expected result:
 If early routing noise is a bottleneck, the run should improve BPB or match BPB with better throughput/router health. Active parameters should stay close because dense hidden `3584` matches `TOP_K * MOE_HIDDEN_DIM`; total parameters should fall because one full expert bank is removed.
 
 Observed result:
+`val_bpb 0.938510`, `2629` steps, `689.2M` tokens, `30.0GB` peak VRAM, and `23.30%` MFU. Total params fell from `553.8M` to `496.0M`, while active params stayed matched at `91.3M`. The run was initially behind at matched steps: step `200` was `3.991079` vs the previous best `3.933340`, step `360` was `3.347321` vs `3.332431`, and step `600` was `3.112301` vs `3.100722`. It caught up late: step `2000` was `2.663486` vs `2.664526`, and final BPB improved by `0.001566`. Router health was excellent: mean load CV `0.0616`, max-layer load CV `0.0691`, mean max load `0.0705`, max-layer max load `0.0726`, mean router bias abs `0.0079`, and max bias abs `0.0706`.
+
+Interpretation:
+Dense first layer is a strong win. It starts slower in CE at matched steps but runs faster and catches up late, giving both better wall-time BPB and cleaner routing with far fewer total parameters. This supports the early-routing-noise hypothesis: the model benefits from doing one dense transformation before sparse expert routing.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current best
+
+Next run:
+Try the natural extension, first two layers dense at the same active width. If it keeps improving or stays close with more throughput and fewer total params, dense stem plus sparse upper layers is a real architecture direction. If it loses, keep one dense layer as the best compromise.
+
+### run 20: first two layers dense SwiGLU
+
+Kind/thread:
+architecture / dense-early-layers
+
+Pre-run hypothesis:
+The first dense layer result suggests early sparse routing is costly. Making the first two FFN layers dense may further reduce early routing noise and improve throughput/parameter efficiency, while leaving six upper sparse MoE layers for specialization.
+
+Expected result:
+If dense stem is the right direction, two dense layers should match or beat the one-dense-layer BPB, or at least remain close with higher throughput and lower total params. If the second dense layer removes too much expert capacity/specialization, matched-step CE and final BPB should regress.
+
+Observed result:
 pending
 
 Interpretation:
