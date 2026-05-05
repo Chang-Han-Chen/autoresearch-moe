@@ -199,6 +199,11 @@ class GPTConfig:
     moe_hidden_dim: int = 1792
     router_z_loss_coef: float = 1.0e-3
     load_balance_loss_coef: float = 1.0e-2
+    router_sigmoid_affinity: bool = False
+    router_expert_bias: bool = False
+    router_bias_ema_beta: float = 0.9
+    router_bias_eta: float = 1.0e-3
+    router_bias_clamp: float = 0.25
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
     value_mix_start_layer: int = 1
@@ -293,8 +298,23 @@ class TokenChoiceMoE(nn.Module):
         self.moe_hidden_dim = config.moe_hidden_dim
         self.router_z_loss_coef = config.router_z_loss_coef
         self.load_balance_loss_coef = config.load_balance_loss_coef
+        self.router_sigmoid_affinity = config.router_sigmoid_affinity
+        self.router_expert_bias = config.router_expert_bias
+        self.router_bias_ema_beta = config.router_bias_ema_beta
+        self.router_bias_eta = config.router_bias_eta
+        self.router_bias_clamp = config.router_bias_clamp
         assert 1 <= self.top_k <= self.num_experts
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
+        if self.router_expert_bias:
+            self.register_buffer("router_bias", torch.empty(config.num_experts), persistent=True)
+            self.register_buffer("router_load_ema", torch.empty(config.num_experts), persistent=True)
+            self.register_buffer("router_load_accum", torch.empty(config.num_experts), persistent=False)
+            self.register_buffer("router_load_count", torch.empty((), dtype=torch.float32), persistent=False)
+        else:
+            self.router_bias = None
+            self.router_load_ema = None
+            self.router_load_accum = None
+            self.router_load_count = None
         expert_dtype = torch.bfloat16
         self.w_gate = nn.Parameter(torch.empty(
             config.num_experts * config.n_embd, config.moe_hidden_dim, dtype=expert_dtype,
@@ -305,6 +325,33 @@ class TokenChoiceMoE(nn.Module):
         self.w_down = nn.Parameter(torch.empty(
             config.num_experts * config.moe_hidden_dim, config.n_embd, dtype=expert_dtype,
         ))
+
+    @torch.no_grad()
+    def reset_router_state(self):
+        if not self.router_expert_bias:
+            return
+        self.router_bias.zero_()
+        self.router_load_ema.fill_(1.0 / self.num_experts)
+        self.router_load_accum.zero_()
+        self.router_load_count.zero_()
+
+    @torch.no_grad()
+    def accumulate_router_load(self, load_frac):
+        if not self.router_expert_bias:
+            return
+        self.router_load_accum.add_(load_frac.detach().to(device=self.router_load_accum.device))
+        self.router_load_count.add_(1.0)
+
+    @torch.no_grad()
+    def update_router_bias(self, load_frac):
+        if not self.router_expert_bias:
+            return
+        self.router_load_ema.mul_(self.router_bias_ema_beta).add_(load_frac, alpha=1.0 - self.router_bias_ema_beta)
+        uniform = 1.0 / self.num_experts
+        delta = (uniform - self.router_load_ema) / uniform
+        self.router_bias.add_(self.router_bias_eta * delta)
+        self.router_bias.sub_(self.router_bias.mean())
+        self.router_bias.clamp_(-self.router_bias_clamp, self.router_bias_clamp)
 
     def forward(self, x):
         B, T, C = x.shape
@@ -318,22 +365,49 @@ class TokenChoiceMoE(nn.Module):
         with torch.amp.autocast(device_type="cuda", enabled=False):
             router_logits = self.router(flat_x.float())      # [N, E]
             router_probs = F.softmax(router_logits, dim=-1)  # [N, E]
-            top_logits, top_idx = torch.topk(router_logits, K, dim=-1)
-            top_weight = F.softmax(top_logits, dim=-1)       # [N, K]
+            if self.router_sigmoid_affinity:
+                affinity = torch.sigmoid(router_logits)
+                score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+                route_scores = affinity + self.router_bias if self.router_expert_bias else affinity
+                _, top_idx = torch.topk(route_scores, K, dim=-1)
+                clean_scores = affinity.gather(1, top_idx)
+                top_weight = clean_scores / clean_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
+                prob_mean = score_mass.mean(dim=0)
+            else:
+                top_logits, top_idx = torch.topk(router_logits, K, dim=-1)
+                top_weight = F.softmax(top_logits, dim=-1)       # [N, K]
+                prob_mean = router_probs.mean(dim=0)
 
             # Router regularization. The hard load fraction is intentionally
             # detached; gradients flow through mean router probability, not
             # through the non-differentiable top-k indices.
             selected_one_hot = F.one_hot(top_idx, num_classes=E).float()  # [N, K, E]
             load_frac = selected_one_hot.sum(dim=(0, 1)) / float(N * K)
-            prob_mean = router_probs.mean(dim=0)
             load_balance_loss = E * torch.sum(load_frac.detach() * prob_mean)
             z_loss = torch.logsumexp(router_logits, dim=-1).square().mean()
             aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
 
             entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
+            if self.router_sigmoid_affinity:
+                sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
+                sigmoid_low_frac = (affinity < 0.01).float().mean()
+                sigmoid_high_frac = (affinity > 0.99).float().mean()
+            else:
+                sigmoid_mass_entropy = router_logits.new_zeros(())
+                sigmoid_low_frac = router_logits.new_zeros(())
+                sigmoid_high_frac = router_logits.new_zeros(())
             load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
             max_load = load_frac.max()
+            if self.router_expert_bias:
+                bias_abs = self.router_bias.detach().abs()
+                router_bias_abs = bias_abs.mean()
+                router_bias_max_abs = bias_abs.max()
+                load_ema = self.router_load_ema.detach()
+                load_ema_cv = load_ema.std(unbiased=False) / load_ema.mean().clamp_min(1e-9)
+            else:
+                router_bias_abs = router_logits.new_zeros(())
+                router_bias_max_abs = router_logits.new_zeros(())
+                load_ema_cv = router_logits.new_zeros(())
 
         choice_expert = top_idx.reshape(-1)
         choice_token = torch.arange(N, device=flat_x.device).repeat_interleave(K)
@@ -364,6 +438,13 @@ class TokenChoiceMoE(nn.Module):
             "router_z_loss": z_loss.detach(),
             "router_lb_loss": load_balance_loss.detach(),
             "router_aux_loss": aux_loss.detach(),
+            "expert_load_frac": load_frac.detach(),
+            "router_sigmoid_mass_entropy": sigmoid_mass_entropy.detach(),
+            "router_sigmoid_low_frac": sigmoid_low_frac.detach(),
+            "router_sigmoid_high_frac": sigmoid_high_frac.detach(),
+            "router_bias_abs": router_bias_abs.detach(),
+            "router_bias_max_abs": router_bias_max_abs.detach(),
+            "router_load_ema_cv": load_ema_cv.detach(),
         }
         return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
 
@@ -439,6 +520,7 @@ class GPT(nn.Module):
                     block.attn.value_mix_gamma.fill_(self.config.value_mix_gamma_init)
 
             init_weight(block.moe.router.weight, self.config.n_embd)
+            block.moe.reset_router_state()
             init_weight(block.moe.w_gate, self.config.n_embd)
             init_weight(block.moe.w_up, self.config.n_embd)
             init_weight(block.moe.w_down, self.config.moe_hidden_dim)
@@ -567,6 +649,29 @@ class GPT(nn.Module):
         for group in optimizer.param_groups:
             group["initial_lr"] = group["lr"]
         return optimizer
+
+    @torch.no_grad()
+    def accumulate_router_loads(self):
+        layer_loads = self.last_router_stats.get("layer_expert_load_frac")
+        if layer_loads is None:
+            return
+        for block, load_frac in zip(self.transformer.h, layer_loads):
+            block.moe.accumulate_router_load(load_frac)
+
+    @torch.no_grad()
+    def update_router_biases(self):
+        for block in self.transformer.h:
+            moe = block.moe
+            if not moe.router_expert_bias:
+                continue
+            count = moe.router_load_count.clamp_min(1.0)
+            load_frac = moe.router_load_accum / count
+            if IS_DISTRIBUTED:
+                dist.all_reduce(load_frac, op=dist.ReduceOp.SUM)
+                load_frac.div_(WORLD_SIZE)
+            moe.update_router_bias(load_frac)
+            moe.router_load_accum.zero_()
+            moe.router_load_count.zero_()
 
     def forward(self, idx, targets=None, reduction="mean"):
         B, T = idx.size()
@@ -777,13 +882,18 @@ NUM_EXPERTS = 16
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 7.5e-4
-LOAD_BALANCE_LOSS_COEF = 8.5e-3
+LOAD_BALANCE_LOSS_COEF = 0.0
+ROUTER_SIGMOID_AFFINITY = True
+ROUTER_EXPERT_BIAS = True
+ROUTER_BIAS_EMA_BETA = 0.9
+ROUTER_BIAS_ETA = 1.0e-3
+ROUTER_BIAS_CLAMP = 0.25
 VALUE_MIX_ENABLED = True
-VALUE_MIX_LEARNED = True
+VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
-VALUE_MIX_NORMALIZED = True
-VALUE_MIX_FIRST_INIT = 0.5
-VALUE_MIX_LOCAL_INIT = 0.5
+VALUE_MIX_NORMALIZED = False
+VALUE_MIX_FIRST_INIT = 0.75
+VALUE_MIX_LOCAL_INIT = 0.25
 VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INIT ** 2)
 
 # Optimization.
@@ -840,6 +950,11 @@ config = GPTConfig(
     moe_hidden_dim=MOE_HIDDEN_DIM,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
+    router_sigmoid_affinity=ROUTER_SIGMOID_AFFINITY,
+    router_expert_bias=ROUTER_EXPERT_BIAS,
+    router_bias_ema_beta=ROUTER_BIAS_EMA_BETA,
+    router_bias_eta=ROUTER_BIAS_ETA,
+    router_bias_clamp=ROUTER_BIAS_CLAMP,
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
     value_mix_start_layer=VALUE_MIX_START_LAYER,
@@ -991,10 +1106,26 @@ def reduce_router_stats(stats):
         mean_key="mean_router_sigmoid_high_frac",
         max_key="max_layer_router_sigmoid_high_frac",
     )
+    add_layer_summary(
+        "layer_router_bias_abs",
+        mean_key="mean_router_bias_abs",
+        max_key="max_layer_router_bias_abs",
+    )
+    add_layer_summary(
+        "layer_router_bias_max_abs",
+        max_key="max_router_bias_abs",
+    )
+    add_layer_summary(
+        "layer_router_load_ema_cv",
+        mean_key="mean_router_load_ema_cv",
+        max_key="max_layer_router_load_ema_cv",
+    )
 
     summary.setdefault("mean_router_bias_abs", 0.0)
     summary.setdefault("max_router_bias_abs", 0.0)
     summary.setdefault("max_layer_router_bias_abs", 0.0)
+    summary.setdefault("mean_router_load_ema_cv", 0.0)
+    summary.setdefault("max_layer_router_load_ema_cv", 0.0)
     return summary
 
 
@@ -1140,6 +1271,7 @@ while True:
             train_ce_loss_for_log = raw_model.last_ce_loss
             train_total_loss_for_log = raw_model.last_total_loss
             (loss / grad_accum_steps).backward()
+            raw_model.accumulate_router_loads()
         x, y, epoch = next(train_loader)
 
     train_loss_tensor = maybe_all_reduce_mean(train_loss_for_log.float())
@@ -1170,6 +1302,7 @@ while True:
 
     torch.nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
     optimizer.step()
+    raw_model.update_router_biases()
     model.zero_grad(set_to_none=True)
 
     train_loss_f = float(train_loss_tensor.item())
@@ -1360,6 +1493,8 @@ if IS_MASTER:
         "mean_router_bias_abs",
         "max_router_bias_abs",
         "max_layer_router_bias_abs",
+        "mean_router_load_ema_cv",
+        "max_layer_router_load_ema_cv",
         "router_lb_loss",
         "router_aux_loss",
     ]:
