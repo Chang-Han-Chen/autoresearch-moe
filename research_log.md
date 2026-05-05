@@ -960,3 +960,29 @@ discard; restore sigmoid-bias baseline
 
 Next run:
 Restore the current fixed-wall best stack: sigmoid affinities, expert bias, `LOAD_BALANCE_LOSS_COEF=0.003`, router back on Muon, and ReMoE flags off. Move to another fundamental idea rather than continuing ReLU routing.
+
+### run 35: faithful ReMoE geometry, 8 experts top-1 target
+
+Kind/thread:
+router / remoe-faithful
+
+Pre-run hypothesis:
+The first true-ReMoE test may have been unfair to the original method: it used the current `16/top-2` stack with a dense stem, while the paper's main comparisons fix `E=8`, `k=1`, all MoE layers, and train through the natural dense/sparsifying/stable stages. Switching to `8` experts with target active count `1`, no dense stem, and expert hidden `3584` keeps active expert width comparable to the current stack while matching the paper's routing geometry more closely.
+
+Expected result:
+Ignoring wall time, ReMoE should at least close the matched-step gap after the sparsity controller reaches the stable stage. Active count should stabilize around `1.0` expert/token with no zero-active collapse. If it still trails badly at matched steps, the issue is probably not just `k/E` geometry.
+
+Observed result:
+running
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+If this improves but remains behind, push further toward the paper by trying AdamW-only optimization or longer matched-step training. If it fails, compare against a matching top-1 baseline before rejecting the geometry.
