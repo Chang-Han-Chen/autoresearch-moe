@@ -611,16 +611,16 @@ Expected result:
 If the dense benefit is mostly extra steps, matched-step validation should regress toward the no-dense `0.940076` BPB and may no longer beat it materially. If dense stem has real architecture value, it should remain clearly below `0.940076` at the same `2515` steps.
 
 Observed result:
-pending
+`val_bpb 0.939195` at exactly `2515` steps, `659.3M` tokens, `407.9s` training time, `453.5s` total time, `29.3GB` peak VRAM, and `24.59%` MFU. This beats the no-dense attention-gate baseline at the same step count (`0.940076`) by `0.000881` BPB, about `0.094%` relative. It is worse than the full fixed-wall two-dense run (`0.938179`) because the fixed-wall run reached `2778` steps. Router health was very clean: mean load CV `0.0560`, max-layer load CV `0.0600`, max load `0.0690`, max-layer max load `0.0703`, mean router bias abs `0.0080`, and max router bias abs `0.0356`.
 
 Interpretation:
-pending
+The two-dense gain is not purely an artifact of getting more updates in the 450s budget. There is a real matched-step benefit over the no-dense XSA+gate stack. However, the fixed-wall improvement is larger than the matched-step improvement, so the dense stem is doing two things at once: it slightly improves sample/update efficiency and materially improves throughput by replacing early expensive expert banks with dense FFNs. The three-dense diagnostics suggest this effect saturates quickly; pushing dense depth further does not look high-signal right now.
 
 Agrees with hypothesis:
-pending
+yes, with qualification
 
 Decision:
-pending
+keep two dense layers as the current baseline; stop dense-depth tuning for now
 
 Next run:
-pending
+Move back to the high-priority architecture queue instead of continuing small dense-depth/LR-schedule tweaks. Use both fixed-wall and matched-step diagnostics for any intervention that changes throughput.
