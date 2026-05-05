@@ -681,16 +681,16 @@ Expected result:
 If the useful mechanism is residual-branch magnitude control rather than global feature shrinkage, this should preserve the early warmup benefit without the large post-warmup regression. Router health should stay comparable to the baseline because routing receives unscaled `norm(x)`. If BPB or matched-step CE still regresses while routing stays healthy, the issue is simply that upper-layer attention values and FFN/expert branches need full scale in this small model.
 
 Observed result:
-pending
+Aborted at step `474` after the matched-step loss was clearly worse than the two-dense baseline. Step `100` was `5.235683` vs baseline `5.249734`, so there was only a tiny warmup gain. By step `200` it had already lost (`4.023578` vs `3.998785`), and by step `360` the gap was large (`3.378140` vs `3.344945`). At the last sampled step `421`, loss was `3.286112`; the run was still healthy from a routing perspective, with router entropy `1.156`, load CV `0.136`, and max load `0.081`.
 
 Interpretation:
-pending
+This more surgical scaling avoided directly shrinking router inputs, but it still hurt once training left the earliest warmup. The failure therefore seems to be the branch scale itself: upper-layer attention values and FFN/expert activations need close to full scale in this model. The router stayed healthy because it was intentionally unscaled, which confirms the implementation isolated the content branch rather than breaking route selection.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard/abort; restore prior two-dense baseline behavior
 
 Next run:
-pending
+Close raw `1/sqrt(ell)` scaling for now. Any future residual-branch scaling should be much gentler or learned, but this is not as promising as the shared-expert direction.
