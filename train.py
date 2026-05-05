@@ -1003,7 +1003,7 @@ ADAM_BETAS = (0.9, 0.95)
 ADAM_EPS = 1e-8
 GRAD_CLIP_NORM = 1.0
 WARMUP_STEPS = 100
-ESTIMATED_TOTAL_STEPS = 2390
+ESTIMATED_TOTAL_STEPS = int(os.environ.get("AR_ESTIMATED_TOTAL_STEPS", "2390"))
 MIN_LR_FRAC = 0.1
 ENABLE_COMPILE = True          # speed experiment: compile static model regions if sparse MoE permits it
 
@@ -1114,6 +1114,7 @@ train_loader = make_sharded_dataloader(tokenizer, DEVICE_BATCH_SIZE, MAX_SEQ_LEN
 x, y, epoch = next(train_loader)  # prefetch first batch
 
 master_print(f"Time budget: {TRAIN_TIME_BUDGET}s")
+master_print(f"Estimated total steps for LR schedule: {ESTIMATED_TOTAL_STEPS}")
 master_print(f"Global batch tokens: {TOTAL_BATCH_SIZE:,}")
 master_print(f"Device batch size: {DEVICE_BATCH_SIZE}")
 master_print(f"Gradient accumulation steps: {grad_accum_steps}")
