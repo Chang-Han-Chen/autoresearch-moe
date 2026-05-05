@@ -772,3 +772,29 @@ discard/abort; restore the two-dense fixed-wall best stack
 
 Next run:
 Return to larger architecture ideas rather than fixed depth scaling. Shared experts are a natural next candidate because they may add reusable dense capacity without reintroducing unstable learned value residuals or router-health tuning.
+
+### run 28: mixed-V-only depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The previous deterministic depth-scaling failures may have been dominated by scaling SwiGLU/experts. A cleaner isolation is to scale only the attention value content after the fixed first-value mix by one-based `1/sqrt(ell)`, leaving dense MLP inputs, MoE expert inputs, router logits, Q/K normalization, the headwise attention gate, and the LM head unchanged.
+
+Expected result:
+If attention value amplitude is the part that benefits from depth-dependent damping, this should improve or at least avoid the large early regression seen when MLP scaling was included. Router health should remain normal because no router input or expert computation is scaled. If it is clearly worse by step `360`, the fixed V scale is probably also underpowering useful attention content.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending
