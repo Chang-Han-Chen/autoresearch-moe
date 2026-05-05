@@ -921,6 +921,32 @@ Expected result:
 Load CV and max load should move materially toward the sigmoid-bias baseline by steps `200-600`. A useful repair needs to keep matched-step CE close to or better than run 32; if stronger load pressure worsens CE while load remains bad, ReLU scoring is not worth more tuning now.
 
 Observed result:
+Aborted at step `594`. Stronger load loss modestly improved router health relative to fixed-K ReLU with `0.003`, but not enough, and CE got slightly worse. At step `100`, load CV improved to `0.234` from run 32's `0.320`, but CE worsened to `5.272584` from `5.267034`. At step `360`, CE was `3.359717` vs run 32 `3.356197` and baseline `3.344945`; load CV was `0.550` vs run 32 `0.589`, still far worse than baseline `0.128`. At step `400`, CE was `3.305098` vs run 32 `3.302979`, load CV `0.548` vs `0.601`. The last sampled step `594` had CE `3.137470`, load CV `0.603`, and max load `0.194`.
+
+Interpretation:
+The load-loss coefficient was not the main missing piece. It trades a small router-health improvement for a small CE regression, and the router still remains much less balanced than sigmoid-bias. The next plausible repair is optimizer dynamics: the router matrix is currently in a Muon group, but ReLU gate magnitudes directly set expert weights and may need AdamW.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard this coefficient; try router AdamW repair
+
+Next run:
+Move router weights to AdamW and restore `LOAD_BALANCE_LOSS_COEF=0.003` for fixed-K ReLU. If router AdamW does not repair the CE/load tradeoff, close ReLU routing for now and restore the sigmoid-bias baseline.
+
+### run 34: fixed-K selected ReLU affinities, router AdamW
+
+Kind/thread:
+router / differentiable-routing
+
+Pre-run hypothesis:
+The fixed-K ReLU runs are close in CE but have poor load balance. Since the router matrix directly controls ReLU gate magnitudes and signs, Muon may be a poor optimizer for this parameter. Moving router weights to AdamW while restoring `LOAD_BALANCE_LOSS_COEF=0.003` may improve the load/CE tradeoff without adding stronger auxiliary pressure.
+
+Expected result:
+Router load should be healthier than run 32 at comparable steps, and CE should be at least as good as run 32. If router AdamW helps, this may also support moving the router to AdamW in the main sigmoid baseline later. If it does not, close ReLU routing.
+
+Observed result:
 running
 
 Interpretation:
@@ -933,4 +959,4 @@ Decision:
 pending
 
 Next run:
-If this repairs load and improves CE, run to final BPB. If not, restore the sigmoid-bias baseline and move to another architecture idea.
+If router AdamW helps, continue or run a sigmoid-baseline router-Adam control. If not, restore current best sigmoid-bias stack and move on.

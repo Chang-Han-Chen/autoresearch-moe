@@ -798,6 +798,11 @@ class GPT(nn.Module):
             if block.attn.c_attn_gate is not None
             for param in block.attn.c_attn_gate.parameters()
         ]
+        router_params = [
+            block.moe.router.weight
+            for block in self.transformer.h
+            if block.moe is not None
+        ]
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
@@ -809,6 +814,11 @@ class GPT(nn.Module):
         if attention_gate_params:
             param_groups.append(dict(
                 kind="adamw", params=attention_gate_params, lr=adamw_lr,
+                betas=adam_betas, eps=adam_eps, weight_decay=weight_decay,
+            ))
+        if router_params:
+            param_groups.append(dict(
+                kind="adamw", params=router_params, lr=adamw_lr,
                 betas=adam_betas, eps=adam_eps, weight_decay=weight_decay,
             ))
 
@@ -835,7 +845,6 @@ class GPT(nn.Module):
         add_muon_group("attn_k", (block.attn.c_k.weight for block in blocks), self.config.n_embd, kv_dim)
         add_muon_group("attn_v", (block.attn.c_v.weight for block in blocks), self.config.n_embd, kv_dim)
         add_muon_group("attn_proj", (block.attn.c_proj.weight for block in blocks), self.config.n_embd, self.config.n_embd)
-        add_muon_group("router", (block.moe.router.weight for block in moe_blocks), self.config.n_embd, self.config.num_experts)
         add_muon_group("expert_gate", (block.moe.w_gate for block in moe_blocks), self.config.n_embd, self.config.moe_hidden_dim)
         add_muon_group("expert_up", (block.moe.w_up for block in moe_blocks), self.config.n_embd, self.config.moe_hidden_dim)
         add_muon_group("expert_down", (block.moe.w_down for block in moe_blocks), self.config.moe_hidden_dim, self.config.n_embd)
@@ -845,7 +854,7 @@ class GPT(nn.Module):
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
-            len(attention_scalar_params) + len(attention_gate_params)
+            len(attention_scalar_params) + len(attention_gate_params) + len(router_params)
         )
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
@@ -1113,7 +1122,7 @@ MOE_HIDDEN_DIM = 1792
 DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
 ROUTER_Z_LOSS_COEF = 7.5e-4
-LOAD_BALANCE_LOSS_COEF = 0.01
+LOAD_BALANCE_LOSS_COEF = 0.003
 ROUTER_RELU_ROUTING = False
 ROUTER_RELU_TOPK_AFFINITY = True
 ROUTER_RELU_L1_INIT = 1.0e-8
