@@ -967,7 +967,7 @@ WINDOW_PATTERN = "SSSL"
 NUM_EXPERTS = 16
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
-DENSE_EARLY_LAYERS = 3
+DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
@@ -1023,6 +1023,7 @@ torch.set_float32_matmul_precision("high")
 autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
 H100_BF16_PEAK_FLOPS = 989.5e12
 TRAIN_TIME_BUDGET = int(os.environ.get("AR_TIME_BUDGET", str(TIME_BUDGET)))
+MAX_TRAIN_STEPS = int(os.environ.get("AR_MAX_STEPS", "0"))
 
 tokenizer = Tokenizer.from_directory()
 vocab_size = tokenizer.get_vocab_size()
@@ -1115,6 +1116,8 @@ x, y, epoch = next(train_loader)  # prefetch first batch
 
 master_print(f"Time budget: {TRAIN_TIME_BUDGET}s")
 master_print(f"Estimated total steps for LR schedule: {ESTIMATED_TOTAL_STEPS}")
+if MAX_TRAIN_STEPS > 0:
+    master_print(f"Max train steps: {MAX_TRAIN_STEPS}")
 master_print(f"Global batch tokens: {TOTAL_BATCH_SIZE:,}")
 master_print(f"Device batch size: {DEVICE_BATCH_SIZE}")
 master_print(f"Gradient accumulation steps: {grad_accum_steps}")
@@ -1473,8 +1476,10 @@ while True:
 
     step += 1
 
+    reached_time_budget = step > 10 and total_training_time >= TRAIN_TIME_BUDGET
+    reached_step_budget = MAX_TRAIN_STEPS > 0 and step >= MAX_TRAIN_STEPS
     done = torch.tensor(
-        [1 if (IS_MASTER and step > 10 and total_training_time >= TRAIN_TIME_BUDGET) else 0],
+        [1 if (IS_MASTER and (reached_time_budget or reached_step_budget)) else 0],
         dtype=torch.int32,
         device=device,
     )

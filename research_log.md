@@ -585,6 +585,32 @@ Expected result:
 If the dense-stem benefit has not saturated, three dense layers should match or beat the two-dense BPB at the same 450s budget, with clean load and higher throughput. If sparse expert capacity is now too shallow, matched-step CE and final BPB should regress despite speed.
 
 Observed result:
+Two diagnostic attempts were aborted before final validation. With the old `ESTIMATED_TOTAL_STEPS=2390` schedule, three dense layers was healthy and fast but not better at matched steps: step `600` was `3.110812` vs two-dense `3.109956`, step `1000` was `2.927728` vs two-dense `2.927467`, and around step `1968` it was `2.664536` vs two-dense step `2000` `2.663244`. After noticing that the LR schedule was stale for faster dense runs, I tried `AR_ESTIMATED_TOTAL_STEPS=2960`; that stretched the cosine decay, but it made optimization clearly worse: step `600` was `3.116307` and step `1000` was `2.945162`, with healthy routing.
+
+Interpretation:
+Three dense layers did not show a sample-efficiency gain, and the corrected longer decay schedule was worse. The dense-stem benefit so far looks mostly like a throughput/wall-time effect, not a clear per-step architecture improvement. Two dense layers remains the best practical wall-time result for now, but the step-count confound needs direct validation.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard three dense for now
+
+Next run:
+Add an explicit max-step stop and evaluate the two-dense model at exactly the no-dense baseline step count. This directly tests whether the two-dense BPB gain survives matched updates/tokens or mostly comes from getting more steps in 450 seconds.
+
+### run 22: two dense layers matched to no-dense step count
+
+Kind/thread:
+diagnostic / dense-early-layers
+
+Pre-run hypothesis:
+The two-dense model's wall-time win may come mostly from getting `2778` updates versus the no-dense attention-gate baseline's `2515` updates. If dense stem is intrinsically better, it should still beat or closely match the no-dense BPB when stopped and validated at `2515` steps under the same step-based LR schedule.
+
+Expected result:
+If the dense benefit is mostly extra steps, matched-step validation should regress toward the no-dense `0.940076` BPB and may no longer beat it materially. If dense stem has real architecture value, it should remain clearly below `0.940076` at the same `2515` steps.
+
+Observed result:
 pending
 
 Interpretation:
