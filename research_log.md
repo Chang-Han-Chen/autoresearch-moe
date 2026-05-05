@@ -837,16 +837,16 @@ Expected result:
 If residual update magnitude is the real issue, this should avoid the severe warmup regression of V/gate/internal scaling and may improve post-warmup stability. Router health should remain normal because router inputs and expert computations are unscaled. If it is worse by step `360`, fixed deterministic residual output scaling is probably not helpful at this scale.
 
 Observed result:
-pending
+Aborted at step `800` because the gap persisted through post-warmup. It was much less bad than internal scaling, but still worse than the two-dense baseline at every checkpoint: step `100` was `5.254192` vs baseline `5.249734`, step `200` was `4.017246` vs `3.998785`, step `360` was `3.362111` vs `3.344945`, step `600` was `3.126910` vs `3.109956`, and step `800` was `3.023749` vs `3.004887`. Router health stayed clean: at step `600`, router entropy was `1.200`, load CV `0.092`, and max load `0.074`.
 
 Interpretation:
-pending
+Output-side scaling confirms the placement hypothesis partially: scaling completed branch outputs is far less destructive than scaling V, gates, dense MLP inputs, or expert inputs. However, fixed `1/sqrt(layer)` still underpowers this small model's residual branches enough to lose sample efficiency. The issue is not routing or instability; the scale is simply too aggressive or not useful as a fixed deterministic rule.
 
 Agrees with hypothesis:
-pending
+partial
 
 Decision:
-pending
+discard/abort; restore the two-dense fixed-wall best stack
 
 Next run:
-pending
+Close fixed deterministic layer scaling for now. If revisited, use a gentler or learnable output-side scale rather than hard `1/sqrt(layer)`. Move back to higher-level architecture changes, with shared experts as the next high-signal candidate.
