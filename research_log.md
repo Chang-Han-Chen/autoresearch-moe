@@ -416,3 +416,29 @@ keep as current best
 
 Next run:
 Use XSA as the baseline for the next attention-side experiment. The most natural follow-up is the primary gated-attention variant: query-dependent headwise sigmoid gate after SDPA/XSA, initialized near identity so the initial model is not shrunk.
+
+### run 15: headwise gated attention on XSA baseline
+
+Kind/thread:
+architecture / attention
+
+Pre-run hypothesis:
+The gated-attention result may transfer to this MoE stack if each query/head can learn how much post-SDPA context to pass through. With XSA already removing the self-value direction, a near-identity headwise sigmoid gate should act as a low-risk learned attention modulator rather than a large initialization change.
+
+Expected result:
+If the gate is useful, matched-step CE should be equal or better than XSA and final BPB should improve without severe throughput loss or new router load concentration. If it mainly shrinks attention or destabilizes the MoE, early CE should fall behind XSA despite healthy routing.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending

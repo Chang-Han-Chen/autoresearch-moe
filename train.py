@@ -205,6 +205,8 @@ class GPTConfig:
     router_bias_eta: float = 1.0e-3
     router_bias_clamp: float = 0.25
     exclusive_attention: bool = False
+    headwise_attention_gate: bool = False
+    attention_gate_init: float = 0.95
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
     value_mix_start_layer: int = 1
@@ -227,6 +229,7 @@ class CausalSelfAttention(nn.Module):
         self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
+        self.c_attn_gate = nn.Linear(self.n_embd, self.n_head, bias=True) if config.headwise_attention_gate else None
         self.qk_gamma = nn.Parameter(torch.ones(()))
         self.exclusive_attention = config.exclusive_attention
         self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
@@ -284,6 +287,9 @@ class CausalSelfAttention(nn.Module):
                 )
             self_v_dir = F.normalize(self_v.float(), dim=-1).to(dtype=y.dtype)
             y = y - (y * self_v_dir).sum(dim=-1, keepdim=True) * self_v_dir
+        if self.c_attn_gate is not None:
+            gate = torch.sigmoid(self.c_attn_gate(x)).view(B, T, self.n_head, 1)
+            y = y * gate.to(dtype=y.dtype)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y, layer_v
@@ -525,6 +531,10 @@ class GPT(nn.Module):
             init_weight(block.attn.c_k.weight, self.config.n_embd)
             init_weight(block.attn.c_v.weight, self.config.n_embd)
             init_weight(block.attn.c_proj.weight, self.config.n_embd)
+            if block.attn.c_attn_gate is not None:
+                block.attn.c_attn_gate.weight.zero_()
+                gate_init = min(max(self.config.attention_gate_init, 1e-6), 1.0 - 1e-6)
+                block.attn.c_attn_gate.bias.fill_(math.log(gate_init / (1.0 - gate_init)))
             block.attn.qk_gamma.fill_(1.0)
             if block.attn.value_mix_enabled:
                 block.attn.value_mix_first.fill_(self.config.value_mix_first_init)
@@ -619,6 +629,12 @@ class GPT(nn.Module):
             for param in (block.attn.value_mix_first, block.attn.value_mix_local, block.attn.value_mix_gamma)
             if param is not None
         )
+        attention_gate_params = [
+            param
+            for block in self.transformer.h
+            if block.attn.c_attn_gate is not None
+            for param in block.attn.c_attn_gate.parameters()
+        ]
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
@@ -627,6 +643,11 @@ class GPT(nn.Module):
             dict(kind="adamw", params=embedding_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
             dict(kind="adamw", params=attention_scalar_params, lr=adamw_lr, betas=adam_betas, eps=adam_eps, weight_decay=weight_decay),
         ]
+        if attention_gate_params:
+            param_groups.append(dict(
+                kind="adamw", params=attention_gate_params, lr=adamw_lr,
+                betas=adam_betas, eps=adam_eps, weight_decay=weight_decay,
+            ))
 
         muon_params = []
 
@@ -656,7 +677,7 @@ class GPT(nn.Module):
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
-            len(attention_scalar_params)
+            len(attention_scalar_params) + len(attention_gate_params)
         )
         optimizer = MuonAdamW(param_groups)
         for group in optimizer.param_groups:
@@ -902,6 +923,8 @@ ROUTER_BIAS_EMA_BETA = 0.9
 ROUTER_BIAS_ETA = 1.0e-3
 ROUTER_BIAS_CLAMP = 0.25
 EXCLUSIVE_ATTENTION = True
+HEADWISE_ATTENTION_GATE = True
+ATTENTION_GATE_INIT = 0.95
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
@@ -970,6 +993,8 @@ config = GPTConfig(
     router_bias_eta=ROUTER_BIAS_ETA,
     router_bias_clamp=ROUTER_BIAS_CLAMP,
     exclusive_attention=EXCLUSIVE_ATTENTION,
+    headwise_attention_gate=HEADWISE_ATTENTION_GATE,
+    attention_gate_init=ATTENTION_GATE_INIT,
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
     value_mix_start_layer=VALUE_MIX_START_LAYER,
@@ -1447,6 +1472,22 @@ value_mix_gamma_values = [
 value_mix_first_tensor = torch.stack(value_mix_first_values) if value_mix_first_values else None
 value_mix_local_tensor = torch.stack(value_mix_local_values) if value_mix_local_values else None
 value_mix_gamma_tensor = torch.stack(value_mix_gamma_values) if value_mix_gamma_values else None
+attention_gate_bias_sigmoid_values = [
+    torch.sigmoid(block.attn.c_attn_gate.bias.detach().float()).mean()
+    for block in raw_model.transformer.h
+    if block.attn.c_attn_gate is not None
+]
+attention_gate_weight_rms_values = [
+    block.attn.c_attn_gate.weight.detach().float().square().mean().sqrt()
+    for block in raw_model.transformer.h
+    if block.attn.c_attn_gate is not None
+]
+attention_gate_bias_sigmoid_tensor = (
+    torch.stack(attention_gate_bias_sigmoid_values) if attention_gate_bias_sigmoid_values else None
+)
+attention_gate_weight_rms_tensor = (
+    torch.stack(attention_gate_weight_rms_values) if attention_gate_weight_rms_values else None
+)
 
 if IS_MASTER:
     print("---")
@@ -1469,6 +1510,13 @@ if IS_MASTER:
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
+    print(f"exclusive_attention: {int(EXCLUSIVE_ATTENTION)}")
+    print(f"headwise_attention_gate: {int(HEADWISE_ATTENTION_GATE)}")
+    if attention_gate_bias_sigmoid_tensor is not None:
+        print(f"mean_attention_gate_bias_sigmoid: {attention_gate_bias_sigmoid_tensor.mean().item():.6f}")
+        print(f"min_attention_gate_bias_sigmoid:  {attention_gate_bias_sigmoid_tensor.min().item():.6f}")
+        print(f"max_attention_gate_bias_sigmoid:  {attention_gate_bias_sigmoid_tensor.max().item():.6f}")
+        print(f"mean_attention_gate_weight_rms:   {attention_gate_weight_rms_tensor.mean().item():.6f}")
     print(f"value_mix_enabled: {int(VALUE_MIX_ENABLED)}")
     print(f"value_mix_learned: {int(VALUE_MIX_LEARNED)}")
     print(f"value_mix_start_layer: {VALUE_MIX_START_LAYER}")
