@@ -895,16 +895,16 @@ Expected result:
 If the ReLU scoring geometry is useful once we remove variable-active overhead, matched-step loss should approach or beat the sigmoid-affinity baseline while throughput returns near baseline. If it is worse early and stays worse after warmup, the problem is likely the ReLU gate/scale itself rather than only ReMoE dispatch.
 
 Observed result:
-running
+Aborted at step `676` after the run stayed slightly worse than the sigmoid-affinity baseline and router health degraded. Throughput returned to baseline level (`~1.60-1.63M` tok/sec), so this cleanly isolated routing geometry. Matched-step CE was close but consistently behind: step `100` `5.267034` vs baseline `5.249734`; step `200` `4.012571` vs `3.998785`; step `360` `3.356197` vs `3.344945`; step `500` `3.188583` vs `3.173241`; step `600` `3.128570` vs `3.109956`. Router load got progressively worse: load CV rose from `0.320` at step `100` to `0.712` at step `600`, and max expert load rose from `0.100` to `0.216`.
 
 Interpretation:
-pending
+Fixed-K ReLU is much more promising than true variable-active ReMoE because it preserves speed and is only slightly worse in CE. The failure mode is clear: ReLU scores are too load-concentrating under the current `0.003` load loss. Since CE is close while router health is bad, this deserves one repair run with stronger load pressure before rejecting ReLU scoring.
 
 Agrees with hypothesis:
-pending
+partial
 
 Decision:
-pending
+repair
 
 Next run:
-If fixed-K ReLU is close but not better, try smaller router-logit scale or move the router matrix to AdamW. If it is clearly bad, restore sigmoid-bias and switch to a different fundamental idea.
+Try fixed-K ReLU with stronger load-balance coefficient, starting at `0.01`. If load health improves without losing CE, this path remains alive. If CE worsens or load still concentrates, restore sigmoid-bias and switch ideas.
