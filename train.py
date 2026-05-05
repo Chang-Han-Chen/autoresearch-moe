@@ -204,6 +204,7 @@ class GPTConfig:
     router_bias_ema_beta: float = 0.9
     router_bias_eta: float = 1.0e-3
     router_bias_clamp: float = 0.25
+    exclusive_attention: bool = False
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
     value_mix_start_layer: int = 1
@@ -227,6 +228,7 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
+        self.exclusive_attention = config.exclusive_attention
         self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
         self.value_mix_learned = config.value_mix_learned
         self.value_mix_normalized = config.value_mix_normalized
@@ -271,6 +273,17 @@ class CausalSelfAttention(nn.Module):
         q = q * self.qk_gamma
 
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        if self.exclusive_attention:
+            self_v = v
+            if self.n_kv_head != self.n_head:
+                kv_groups = self.n_head // self.n_kv_head
+                self_v = (
+                    self_v[:, :, :, None, :]
+                    .expand(B, T, self.n_kv_head, kv_groups, self.head_dim)
+                    .reshape(B, T, self.n_head, self.head_dim)
+                )
+            self_v_dir = F.normalize(self_v.float(), dim=-1).to(dtype=y.dtype)
+            y = y - (y * self_v_dir).sum(dim=-1, keepdim=True) * self_v_dir
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y, layer_v
@@ -878,9 +891,9 @@ HEAD_DIM = 128
 NUM_HEADS = MODEL_DIM // HEAD_DIM
 NUM_KV_HEADS = 2
 WINDOW_PATTERN = "SSSL"
-NUM_EXPERTS = 32
-TOP_K = 4
-MOE_HIDDEN_DIM = 896
+NUM_EXPERTS = 16
+TOP_K = 2
+MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
 ROUTER_SIGMOID_AFFINITY = True
@@ -888,6 +901,7 @@ ROUTER_EXPERT_BIAS = True
 ROUTER_BIAS_EMA_BETA = 0.9
 ROUTER_BIAS_ETA = 1.0e-3
 ROUTER_BIAS_CLAMP = 0.25
+EXCLUSIVE_ATTENTION = True
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
@@ -955,6 +969,7 @@ config = GPTConfig(
     router_bias_ema_beta=ROUTER_BIAS_EMA_BETA,
     router_bias_eta=ROUTER_BIAS_ETA,
     router_bias_clamp=ROUTER_BIAS_CLAMP,
+    exclusive_attention=EXCLUSIVE_ATTENTION,
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
     value_mix_start_layer=VALUE_MIX_START_LAYER,

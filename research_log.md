@@ -375,3 +375,29 @@ With active FFN width and total expert width held fixed, `32/top-4/896` gives ma
 
 Expected result:
 If expert granularity is the right structural direction, matched-step CE and final BPB should improve or at least remain close while router max load stays controlled. Throughput may fall; a quality win at matched steps would still be worth analyzing for acceleration.
+
+Observed result:
+Aborted at step `936`. The run had very healthy routing for 32 experts: max load was mostly `0.04-0.05` where uniform is `0.03125`, and load CV settled around `0.15-0.20`. However, matched-step loss was clearly behind the current best: about `3.386` vs `3.357` at step `360`, and about `2.997` near step `930` when the best 16/top-2 curve is already much closer to `2.94` by step `1000`. Throughput also fell from about `1.51M` tok/s to `1.40M` tok/s.
+
+Interpretation:
+The stabilized router makes fine-grained routing healthy, but the smaller experts/top-4 mixture are not learning better in this short run. This is not a load-collapse problem to repair; it is a quality and wall-time loss.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort
+
+Next run:
+Restore `16/top-2/1792` current best stack and try an attention-side intervention from the primary literature rather than more MoE healthcare.
+
+### run 14: exclusive self attention on current best stack
+
+Kind/thread:
+architecture / attention
+
+Pre-run hypothesis:
+Exclusive self attention may improve the division of labor between attention and the MoE FFN by forcing attention outputs to carry contextual information orthogonal to the current token's own value vector. Because residual connections already carry self information, removing the self-value direction from attention could reduce redundant pointwise transformation without touching router mechanics.
+
+Expected result:
+If XSA transfers to this MoE setting, matched-step CE and final BPB should improve with minimal throughput cost. Router load should remain similar to the current best; if router diagnostics move sharply, the attention change is perturbing the sparse FFN rather than cleanly improving context modeling.
