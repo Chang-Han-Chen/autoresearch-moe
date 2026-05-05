@@ -707,16 +707,16 @@ Expected result:
 If the quadratic-scale argument is right, this run should avoid the immediate post-warmup regression seen in run 24. Router health should stay close to baseline because router inputs are unscaled. The run must continue to at least step `1000` before decision, so the comparison should use step `1000` and later diagnostics rather than only early warmup.
 
 Observed result:
-pending
+Aborted after the required `1000`-step minimum; the run reached step `1194`. Early warmup was improved: step `100` was `5.192789` vs baseline `5.249734`, and step `200` was `3.968512` vs `3.998785`. The advantage did not survive. Step `360` was `3.357584` vs baseline `3.344945`, step `600` was `3.122031` vs `3.109956`, step `800` was `3.017799` vs `3.004887`, step `1000` was `2.941547` vs `2.927467`, and near step `1194` it was `2.880050` vs baseline step `1200` `2.856051`. Routing remained healthy: at step `1000`, router entropy `1.142`, load CV `0.089`, and max load `0.075`.
 
 Interpretation:
-pending
+Quarter-power input scaling is less damaging than raw `1/sqrt(ell)` input scaling, and it preserves early warmup gains longer, but it still underpowers MLP/expert branches in the main training regime. The clean router diagnostics confirm this is not a routing failure; reducing MLP branch magnitude itself hurts sample efficiency at this scale.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard/abort; restore prior two-dense baseline behavior
 
 Next run:
-pending
+Close fixed depth-dependent MLP input scaling for now. If residual branch scaling is revisited, it should be learned, floor-clamped close to one, or output-side rather than input-side. Move back to larger architecture ideas such as shared experts.
