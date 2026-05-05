@@ -759,16 +759,16 @@ Expected result:
 If the attention gate was the missing control knob, the regression from run 26 should narrow by step `360`/`600` without hurting router health. If the model is simply underpowered by fixed depth scaling, this should be worse than run 26, especially in deeper-layer sample efficiency. Router logits, Q/K normalization, and the LM head remain unscaled.
 
 Observed result:
-pending
+Aborted at step `300` because the early regression was much larger than run 26 and the fixed-wall baseline. Step `100` was `5.285228` vs run 26 `5.251647` and baseline `5.249734`; step `200` was `4.123603` vs run 26 `4.014865` and baseline `3.998785`; step `300` was `3.523197`. Routing was not the failure mode: at step `300`, router entropy was `1.329`, load CV `0.154`, and max load `0.082`.
 
 Interpretation:
-pending
+Scaling the attention gate by `1/sqrt(ell)` made the already-bad MLP+V depth-scaling variant much worse. The gate was not the missing correction; it further reduced useful attention branch amplitude. This closes the fixed deterministic depth-scaling family for now.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard/abort; restore the two-dense fixed-wall best stack
 
 Next run:
-pending
+Return to larger architecture ideas rather than fixed depth scaling. Shared experts are a natural next candidate because they may add reusable dense capacity without reintroducing unstable learned value residuals or router-health tuning.
