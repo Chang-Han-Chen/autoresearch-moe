@@ -507,6 +507,32 @@ Expected result:
 If the useful effect is dynamic modulation around the normal attention path, centered gating should beat or match the `0.98` sigmoid gate. If the one-sided attenuation of the paper gate is important, centered gating may regress despite cleaner initialization.
 
 Observed result:
+Aborted at step `600`. The centered gate had a strong early win at step `100` (`5.192110` vs `0.98` sigmoid gate `5.239129`) and step `200` (`3.906754` vs `3.933340`), but the advantage reversed after warmup: step `360` was `3.347488` vs `3.332431`, and step `600` was `3.117709` vs `3.100722`. Router load did not collapse (`max_load 0.112` at step `600`), but load CV was higher and throughput was slightly lower.
+
+Interpretation:
+The exact-identity centered gate changes optimization scale in a way that helps the very early warmup but hurts the main training regime. Since the failure is quality, not router collapse, this is not a repairable load-balancing issue. The one-sided sigmoid gate from the paper is the better attention-gate form here.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort
+
+Next run:
+Restore the standard sigmoid headwise gate with `ATTENTION_GATE_INIT=0.98` and move back to the MoE high-priority queue. The next highest-signal structural test is dense early layers, because it asks whether early routing noise is still costing quality now that the attention and router stack is stable.
+
+### run 19: first layer dense SwiGLU
+
+Kind/thread:
+architecture / dense-early-layers
+
+Pre-run hypothesis:
+Early token representations may be too raw for useful sparse routing, even with the current stabilized sigmoid/bias router. Replacing the first MoE FFN with a dense SwiGLU at matched active FFN width should remove the noisiest early router while keeping the rest of the sparse stack intact.
+
+Expected result:
+If early routing noise is a bottleneck, the run should improve BPB or match BPB with better throughput/router health. Active parameters should stay close because dense hidden `3584` matches `TOP_K * MOE_HIDDEN_DIM`; total parameters should fall because one full expert bank is removed.
+
+Observed result:
 pending
 
 Interpretation:

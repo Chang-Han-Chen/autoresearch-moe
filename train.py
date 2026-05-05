@@ -215,6 +215,8 @@ class GPTConfig:
     value_mix_first_init: float = 0.5
     value_mix_local_init: float = 0.5
     value_mix_gamma_init: float = 1.0
+    dense_early_layers: int = 0
+    dense_hidden_dim: int = 3584
 
 
 class CausalSelfAttention(nn.Module):
@@ -306,6 +308,23 @@ class SwiGLUExpert(nn.Module):
 
     def forward(self, x):
         return self.w_down(F.silu(self.w_gate(x)) * self.w_up(x))
+
+
+class DenseSwiGLU(nn.Module):
+    def __init__(self, n_embd, hidden_dim):
+        super().__init__()
+        self.hidden_dim = hidden_dim
+        self.w_gate = nn.Linear(n_embd, hidden_dim, bias=False, dtype=torch.bfloat16)
+        self.w_up = nn.Linear(n_embd, hidden_dim, bias=False, dtype=torch.bfloat16)
+        self.w_down = nn.Linear(hidden_dim, n_embd, bias=False, dtype=torch.bfloat16)
+
+    def forward(self, x):
+        dense_x = x.to(dtype=self.w_gate.weight.dtype)
+        out = self.w_down(F.silu(self.w_gate(dense_x)) * self.w_up(dense_x))
+        return out.to(dtype=x.dtype)
+
+    def param_count(self):
+        return self.w_gate.weight.numel() + self.w_up.weight.numel() + self.w_down.weight.numel()
 
 
 class TokenChoiceMoE(nn.Module):
@@ -481,13 +500,23 @@ class Block(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
         self.attn = CausalSelfAttention(config, layer_idx)
-        self.moe = TokenChoiceMoE(config)
+        self.moe = None
+        self.ffn = None
+        if layer_idx < config.dense_early_layers:
+            self.ffn = DenseSwiGLU(config.n_embd, config.dense_hidden_dim)
+        else:
+            self.moe = TokenChoiceMoE(config)
 
     def forward(self, x, first_v, cos_sin, window_size):
         attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
         x = x + attn_out
-        moe_out, aux_loss, stats = self.moe(norm(x))
-        x = x + moe_out
+        if self.moe is not None:
+            ffn_out, aux_loss, stats = self.moe(norm(x))
+        else:
+            ffn_out = self.ffn(norm(x))
+            aux_loss = x.new_zeros(())
+            stats = {}
+        x = x + ffn_out
         return x, aux_loss, stats, layer_v
 
 
@@ -544,11 +573,16 @@ class GPT(nn.Module):
                 if block.attn.value_mix_gamma is not None:
                     block.attn.value_mix_gamma.fill_(self.config.value_mix_gamma_init)
 
-            init_weight(block.moe.router.weight, self.config.n_embd)
-            block.moe.reset_router_state()
-            init_weight(block.moe.w_gate, self.config.n_embd)
-            init_weight(block.moe.w_up, self.config.n_embd)
-            init_weight(block.moe.w_down, self.config.moe_hidden_dim)
+            if block.moe is not None:
+                init_weight(block.moe.router.weight, self.config.n_embd)
+                block.moe.reset_router_state()
+                init_weight(block.moe.w_gate, self.config.n_embd)
+                init_weight(block.moe.w_up, self.config.n_embd)
+                init_weight(block.moe.w_down, self.config.moe_hidden_dim)
+            else:
+                init_weight(block.ffn.w_gate.weight, self.config.n_embd)
+                init_weight(block.ffn.w_up.weight, self.config.n_embd)
+                init_weight(block.ffn.w_down.weight, self.config.dense_hidden_dim)
 
         head_dim = self.config.n_embd // self.config.n_head
         cos, sin = self._precompute_rotary_embeddings(self.rotary_seq_len, head_dim)
@@ -583,8 +617,16 @@ class GPT(nn.Module):
         return window_sizes
 
     def expert_param_counts(self):
-        total_expert = sum(block.moe.expert_param_count() for block in self.transformer.h)
-        active_expert = sum(block.moe.active_expert_param_count() for block in self.transformer.h)
+        total_expert = sum(
+            block.moe.expert_param_count()
+            for block in self.transformer.h
+            if block.moe is not None
+        )
+        active_expert = sum(
+            block.moe.active_expert_param_count()
+            for block in self.transformer.h
+            if block.moe is not None
+        )
         return total_expert, active_expert
 
     def num_scaling_params(self):
@@ -668,14 +710,19 @@ class GPT(nn.Module):
         head_dim = self.config.n_embd // self.config.n_head
         kv_dim = self.config.n_kv_head * head_dim
         blocks = list(self.transformer.h)
+        moe_blocks = [block for block in blocks if block.moe is not None]
+        dense_blocks = [block for block in blocks if block.ffn is not None]
         add_muon_group("attn_q", (block.attn.c_q.weight for block in blocks), self.config.n_embd, self.config.n_embd)
         add_muon_group("attn_k", (block.attn.c_k.weight for block in blocks), self.config.n_embd, kv_dim)
         add_muon_group("attn_v", (block.attn.c_v.weight for block in blocks), self.config.n_embd, kv_dim)
         add_muon_group("attn_proj", (block.attn.c_proj.weight for block in blocks), self.config.n_embd, self.config.n_embd)
-        add_muon_group("router", (block.moe.router.weight for block in blocks), self.config.n_embd, self.config.num_experts)
-        add_muon_group("expert_gate", (block.moe.w_gate for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
-        add_muon_group("expert_up", (block.moe.w_up for block in blocks), self.config.n_embd, self.config.moe_hidden_dim)
-        add_muon_group("expert_down", (block.moe.w_down for block in blocks), self.config.moe_hidden_dim, self.config.n_embd)
+        add_muon_group("router", (block.moe.router.weight for block in moe_blocks), self.config.n_embd, self.config.num_experts)
+        add_muon_group("expert_gate", (block.moe.w_gate for block in moe_blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_up", (block.moe.w_up for block in moe_blocks), self.config.n_embd, self.config.moe_hidden_dim)
+        add_muon_group("expert_down", (block.moe.w_down for block in moe_blocks), self.config.moe_hidden_dim, self.config.n_embd)
+        add_muon_group("dense_gate", (block.ffn.w_gate.weight for block in dense_blocks), self.config.n_embd, self.config.dense_hidden_dim)
+        add_muon_group("dense_up", (block.ffn.w_up.weight for block in dense_blocks), self.config.n_embd, self.config.dense_hidden_dim)
+        add_muon_group("dense_down", (block.ffn.w_down.weight for block in dense_blocks), self.config.dense_hidden_dim, self.config.n_embd)
 
         assert len(list(self.parameters())) == (
             len(muon_params) + len(embedding_params) + len(lm_head_params) +
@@ -691,12 +738,15 @@ class GPT(nn.Module):
         layer_loads = self.last_router_stats.get("layer_expert_load_frac")
         if layer_loads is None:
             return
-        for block, load_frac in zip(self.transformer.h, layer_loads):
+        moe_blocks = [block for block in self.transformer.h if block.moe is not None]
+        for block, load_frac in zip(moe_blocks, layer_loads):
             block.moe.accumulate_router_load(load_frac)
 
     @torch.no_grad()
     def update_router_biases(self):
         for block in self.transformer.h:
+            if block.moe is None:
+                continue
             moe = block.moe
             if not moe.router_expert_bias:
                 continue
@@ -917,6 +967,8 @@ WINDOW_PATTERN = "SSSL"
 NUM_EXPERTS = 16
 TOP_K = 2
 MOE_HIDDEN_DIM = 1792
+DENSE_EARLY_LAYERS = 1
+DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
 ROUTER_SIGMOID_AFFINITY = True
@@ -926,8 +978,8 @@ ROUTER_BIAS_ETA = 1.0e-3
 ROUTER_BIAS_CLAMP = 0.25
 EXCLUSIVE_ATTENTION = True
 HEADWISE_ATTENTION_GATE = True
-ATTENTION_GATE_INIT = 0.5
-ATTENTION_GATE_SCALE = 2.0
+ATTENTION_GATE_INIT = 0.98
+ATTENTION_GATE_SCALE = 1.0
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
 VALUE_MIX_START_LAYER = 1
@@ -988,6 +1040,8 @@ config = GPTConfig(
     num_experts=NUM_EXPERTS,
     top_k=TOP_K,
     moe_hidden_dim=MOE_HIDDEN_DIM,
+    dense_early_layers=DENSE_EARLY_LAYERS,
+    dense_hidden_dim=DENSE_HIDDEN_DIM,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
     router_sigmoid_affinity=ROUTER_SIGMOID_AFFINITY,
@@ -1224,10 +1278,11 @@ def collect_grad_diag(model):
 
     first_v = model.last_first_v_resid_for_diag
     cv_grad_rms = [grad_rms(block.attn.c_v.weight) for block in blocks]
-    router_grad_rms = [grad_rms(block.moe.router.weight) for block in blocks]
-    expert_gate_grad_rms = [grad_rms(block.moe.w_gate) for block in blocks]
-    expert_up_grad_rms = [grad_rms(block.moe.w_up) for block in blocks]
-    expert_down_grad_rms = [grad_rms(block.moe.w_down) for block in blocks]
+    moe_blocks = [block for block in blocks if block.moe is not None]
+    router_grad_rms = [grad_rms(block.moe.router.weight) for block in moe_blocks]
+    expert_gate_grad_rms = [grad_rms(block.moe.w_gate) for block in moe_blocks]
+    expert_up_grad_rms = [grad_rms(block.moe.w_up) for block in moe_blocks]
+    expert_down_grad_rms = [grad_rms(block.moe.w_down) for block in moe_blocks]
     attn_proj_grad_rms = [grad_rms(block.attn.c_proj.weight) for block in blocks]
 
     diag = {
@@ -1511,6 +1566,8 @@ if IS_MASTER:
     print(f"num_experts:      {NUM_EXPERTS}")
     print(f"top_k:            {TOP_K}")
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
+    print(f"dense_early_layers: {DENSE_EARLY_LAYERS}")
+    print(f"dense_hidden_dim: {DENSE_HIDDEN_DIM}")
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
