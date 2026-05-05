@@ -217,6 +217,7 @@ class GPTConfig:
     value_mix_gamma_init: float = 1.0
     dense_early_layers: int = 0
     dense_hidden_dim: int = 3584
+    branch_layer_scale: bool = False
 
 
 class CausalSelfAttention(nn.Module):
@@ -234,6 +235,7 @@ class CausalSelfAttention(nn.Module):
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.c_attn_gate = nn.Linear(self.n_embd, self.n_head, bias=True) if config.headwise_attention_gate else None
         self.attention_gate_scale = config.attention_gate_scale
+        self.branch_scale = 1.0 / math.sqrt(layer_idx + 1) if config.branch_layer_scale else 1.0
         self.qk_gamma = nn.Parameter(torch.ones(()))
         self.exclusive_attention = config.exclusive_attention
         self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
@@ -273,6 +275,8 @@ class CausalSelfAttention(nn.Module):
                 denom = torch.sqrt(first_coef.float().square() + local_coef.float().square()).clamp_min(1e-6)
                 mixed_v = self.value_mix_gamma.to(dtype=v.dtype) * mixed_v / denom.to(dtype=v.dtype)
             v = mixed_v
+        if self.branch_scale != 1.0:
+            v = v * self.branch_scale
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -393,7 +397,7 @@ class TokenChoiceMoE(nn.Module):
         self.router_bias.sub_(self.router_bias.mean())
         self.router_bias.clamp_(-self.router_bias_clamp, self.router_bias_clamp)
 
-    def forward(self, x):
+    def forward(self, x, expert_input_scale=1.0):
         B, T, C = x.shape
         flat_x = x.reshape(B * T, C)
         N = flat_x.size(0)
@@ -455,6 +459,8 @@ class TokenChoiceMoE(nn.Module):
         sorted_expert = choice_expert.index_select(0, sort_order)
         sorted_token = choice_token.index_select(0, sort_order)
         sorted_x = flat_x.index_select(0, sorted_token).to(dtype=self.w_gate.dtype)
+        if expert_input_scale != 1.0:
+            sorted_x = sorted_x * expert_input_scale
         sorted_weight = top_weight.reshape(-1).index_select(0, sort_order).to(dtype=sorted_x.dtype)
         expert_counts = torch.bincount(sorted_expert, minlength=E).to(torch.int32)
         expert_offsets = torch.cumsum(expert_counts, dim=0, dtype=torch.int32)
@@ -502,6 +508,7 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = None
         self.ffn = None
+        self.branch_scale = 1.0 / math.sqrt(layer_idx + 1) if config.branch_layer_scale else 1.0
         if layer_idx < config.dense_early_layers:
             self.ffn = DenseSwiGLU(config.n_embd, config.dense_hidden_dim)
         else:
@@ -511,9 +518,12 @@ class Block(nn.Module):
         attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
         x = x + attn_out
         if self.moe is not None:
-            ffn_out, aux_loss, stats = self.moe(norm(x))
+            ffn_out, aux_loss, stats = self.moe(norm(x), expert_input_scale=self.branch_scale)
         else:
-            ffn_out = self.ffn(norm(x))
+            ffn_x = norm(x)
+            if self.branch_scale != 1.0:
+                ffn_x = ffn_x * self.branch_scale
+            ffn_out = self.ffn(ffn_x)
             aux_loss = x.new_zeros(())
             stats = {}
         x = x + ffn_out
@@ -969,6 +979,7 @@ TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
+BRANCH_LAYER_SCALE = True
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
 ROUTER_SIGMOID_AFFINITY = True
@@ -1043,6 +1054,7 @@ config = GPTConfig(
     moe_hidden_dim=MOE_HIDDEN_DIM,
     dense_early_layers=DENSE_EARLY_LAYERS,
     dense_hidden_dim=DENSE_HIDDEN_DIM,
+    branch_layer_scale=BRANCH_LAYER_SCALE,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
     router_sigmoid_affinity=ROUTER_SIGMOID_AFFINITY,
@@ -1574,6 +1586,7 @@ if IS_MASTER:
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
     print(f"dense_early_layers: {DENSE_EARLY_LAYERS}")
     print(f"dense_hidden_dim: {DENSE_HIDDEN_DIM}")
+    print(f"branch_layer_scale: {int(BRANCH_LAYER_SCALE)}")
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")

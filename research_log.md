@@ -668,3 +668,29 @@ discard/abort; restore the prior two-dense baseline behavior
 
 Next run:
 Do not use raw `1/sqrt(ell)` pre-norm scaling. If this family is revisited, try a much gentler learned or floor-clamped scale, but it is lower priority than the shared-expert idea.
+
+### run 24: branch-only depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The previous `1/sqrt(ell)` pre-norm run likely failed because it scaled too many control paths: Q/K inputs before their projections, router logits, and attention gates, in addition to the residual branch content. A cleaner test is to scale only branch content: attention V after value mixing, dense MLP inputs, and MoE expert inputs after routing. Router selection, QK norm, head gates, and the final LM head remain unscaled.
+
+Expected result:
+If the useful mechanism is residual-branch magnitude control rather than global feature shrinkage, this should preserve the early warmup benefit without the large post-warmup regression. Router health should stay comparable to the baseline because routing receives unscaled `norm(x)`. If BPB or matched-step CE still regresses while routing stays healthy, the issue is simply that upper-layer attention values and FFN/expert branches need full scale in this small model.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending
