@@ -202,8 +202,10 @@ class GPTConfig:
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
     value_mix_start_layer: int = 1
+    value_mix_normalized: bool = False
     value_mix_first_init: float = 0.5
     value_mix_local_init: float = 0.5
+    value_mix_gamma_init: float = 1.0
 
 
 class CausalSelfAttention(nn.Module):
@@ -222,16 +224,26 @@ class CausalSelfAttention(nn.Module):
         self.qk_gamma = nn.Parameter(torch.ones(()))
         self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
         self.value_mix_learned = config.value_mix_learned
+        self.value_mix_normalized = config.value_mix_normalized
         if self.value_mix_enabled:
             if self.value_mix_learned:
                 self.value_mix_first = nn.Parameter(torch.empty(()))
                 self.value_mix_local = nn.Parameter(torch.empty(()))
+                if self.value_mix_normalized:
+                    self.value_mix_gamma = nn.Parameter(torch.empty(()))
+                else:
+                    self.value_mix_gamma = None
             else:
                 self.register_buffer("value_mix_first", torch.empty(()), persistent=True)
                 self.register_buffer("value_mix_local", torch.empty(()), persistent=True)
+                if self.value_mix_normalized:
+                    self.register_buffer("value_mix_gamma", torch.empty(()), persistent=True)
+                else:
+                    self.value_mix_gamma = None
         else:
             self.value_mix_first = None
             self.value_mix_local = None
+            self.value_mix_gamma = None
 
     def forward(self, x, first_v, cos_sin, window_size):
         B, T, C = x.size()
@@ -240,10 +252,13 @@ class CausalSelfAttention(nn.Module):
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
         layer_v = v
         if self.value_mix_enabled and first_v is not None:
-            v = (
-                self.value_mix_first.to(dtype=v.dtype) * first_v.to(dtype=v.dtype) +
-                self.value_mix_local.to(dtype=v.dtype) * v
-            )
+            first_coef = self.value_mix_first
+            local_coef = self.value_mix_local
+            mixed_v = first_coef.to(dtype=v.dtype) * first_v.to(dtype=v.dtype) + local_coef.to(dtype=v.dtype) * v
+            if self.value_mix_normalized:
+                denom = torch.sqrt(first_coef.float().square() + local_coef.float().square()).clamp_min(1e-6)
+                mixed_v = self.value_mix_gamma.to(dtype=v.dtype) * mixed_v / denom.to(dtype=v.dtype)
+            v = mixed_v
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -420,6 +435,8 @@ class GPT(nn.Module):
             if block.attn.value_mix_enabled:
                 block.attn.value_mix_first.fill_(self.config.value_mix_first_init)
                 block.attn.value_mix_local.fill_(self.config.value_mix_local_init)
+                if block.attn.value_mix_gamma is not None:
+                    block.attn.value_mix_gamma.fill_(self.config.value_mix_gamma_init)
 
             init_weight(block.moe.router.weight, self.config.n_embd)
             init_weight(block.moe.w_gate, self.config.n_embd)
@@ -504,7 +521,8 @@ class GPT(nn.Module):
             param
             for block in self.transformer.h
             if block.attn.value_mix_enabled and block.attn.value_mix_learned
-            for param in (block.attn.value_mix_first, block.attn.value_mix_local)
+            for param in (block.attn.value_mix_first, block.attn.value_mix_local, block.attn.value_mix_gamma)
+            if param is not None
         )
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
@@ -761,10 +779,12 @@ MOE_HIDDEN_DIM = 1792
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 VALUE_MIX_ENABLED = True
-VALUE_MIX_LEARNED = False
+VALUE_MIX_LEARNED = True
 VALUE_MIX_START_LAYER = 1
-VALUE_MIX_FIRST_INIT = 0.75
-VALUE_MIX_LOCAL_INIT = 0.25
+VALUE_MIX_NORMALIZED = True
+VALUE_MIX_FIRST_INIT = 0.5
+VALUE_MIX_LOCAL_INIT = 0.5
+VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INIT ** 2)
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
@@ -823,8 +843,10 @@ config = GPTConfig(
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
     value_mix_start_layer=VALUE_MIX_START_LAYER,
+    value_mix_normalized=VALUE_MIX_NORMALIZED,
     value_mix_first_init=VALUE_MIX_FIRST_INIT,
     value_mix_local_init=VALUE_MIX_LOCAL_INIT,
+    value_mix_gamma_init=VALUE_MIX_GAMMA_INIT,
 )
 master_print(f"Model config: {asdict(config)}")
 
@@ -1016,7 +1038,8 @@ def collect_grad_diag(model):
         param
         for block in blocks
         if block.attn.value_mix_enabled and block.attn.value_mix_learned
-        for param in (block.attn.value_mix_first, block.attn.value_mix_local)
+        for param in (block.attn.value_mix_first, block.attn.value_mix_local, block.attn.value_mix_gamma)
+        if param is not None
     ]
     alpha_values = [p.detach().float().abs() for p in alpha_params]
     alpha_grads = [p.grad.detach().float().abs() for p in alpha_params if p.grad is not None]
@@ -1268,8 +1291,14 @@ value_mix_local_values = [
     for block in raw_model.transformer.h
     if block.attn.value_mix_enabled
 ]
+value_mix_gamma_values = [
+    block.attn.value_mix_gamma.detach().float()
+    for block in raw_model.transformer.h
+    if block.attn.value_mix_enabled and block.attn.value_mix_gamma is not None
+]
 value_mix_first_tensor = torch.stack(value_mix_first_values) if value_mix_first_values else None
 value_mix_local_tensor = torch.stack(value_mix_local_values) if value_mix_local_values else None
+value_mix_gamma_tensor = torch.stack(value_mix_gamma_values) if value_mix_gamma_values else None
 
 if IS_MASTER:
     print("---")
@@ -1295,6 +1324,7 @@ if IS_MASTER:
     print(f"value_mix_enabled: {int(VALUE_MIX_ENABLED)}")
     print(f"value_mix_learned: {int(VALUE_MIX_LEARNED)}")
     print(f"value_mix_start_layer: {VALUE_MIX_START_LAYER}")
+    print(f"value_mix_normalized: {int(VALUE_MIX_NORMALIZED)}")
     if value_mix_first_tensor is not None:
         print(f"mean_value_mix_first: {value_mix_first_tensor.mean().item():.6f}")
         print(f"min_value_mix_first:  {value_mix_first_tensor.min().item():.6f}")
@@ -1302,6 +1332,10 @@ if IS_MASTER:
         print(f"mean_value_mix_local: {value_mix_local_tensor.mean().item():.6f}")
         print(f"min_value_mix_local:  {value_mix_local_tensor.min().item():.6f}")
         print(f"max_value_mix_local:  {value_mix_local_tensor.max().item():.6f}")
+    if value_mix_gamma_tensor is not None:
+        print(f"mean_value_mix_gamma: {value_mix_gamma_tensor.mean().item():.6f}")
+        print(f"min_value_mix_gamma:  {value_mix_gamma_tensor.min().item():.6f}")
+        print(f"max_value_mix_gamma:  {value_mix_gamma_tensor.max().item():.6f}")
     print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
     print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
     for key in [
