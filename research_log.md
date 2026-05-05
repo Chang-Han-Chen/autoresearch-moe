@@ -973,6 +973,32 @@ Expected result:
 Ignoring wall time, ReMoE should at least close the matched-step gap after the sparsity controller reaches the stable stage. Active count should stabilize around `1.0` expert/token with no zero-active collapse. If it still trails badly at matched steps, the issue is probably not just `k/E` geometry.
 
 Observed result:
+`val_bpb 1.004083`, `1576` steps, `413.1M` tokens, `47.95GB` peak VRAM, and `13.93%` MFU. This did not reproduce the paper's gain. Matched-step CE trailed current best by about `0.09` after the sparse regime stabilized: step `360` `3.453835` vs `3.344945`, step `600` `3.195967` vs `3.109956`, step `800` `3.092417` vs `3.004887`, and step `1000` roughly `3.024590` vs `2.927467`. The final routing diagnostics show the main failure: mean active count was `0.893`, but mean zero-active token fraction was `0.445`, with one layer at `0.928` zero-active tokens. Load was very unhealthy: mean load CV `0.680`, max-layer load CV `1.523`, mean max load `0.300`, and max-layer max load `0.573` for uniform `1/8=0.125`.
+
+Interpretation:
+The geometry is more faithful, but our controller is not. Average active count near `1` hides a bad distribution: many tokens/layers route to no expert, while active load concentrates hard in the remaining layers. One implementation difference matters: the paper describes a global adaptive L1 coefficient based on average sparsity, while this code used separate per-layer L1 coefficients. That lets individual layers drift into collapse, which is exactly what the diagnostics show.
+
+Agrees with hypothesis:
+no
+
+Decision:
+repair controller
+
+Next run:
+Use one global ReMoE L1 coefficient shared across MoE layers, updated from global mean active count. Keep the same `8/top-1/3584/all-MoE` geometry. If global lambda fixes zero-active collapse, continue; if not, try gentler multiplier or a minimum-active safety before moving to a matched top-k control.
+
+### run 36: faithful ReMoE geometry with global L1 coefficient
+
+Kind/thread:
+router / remoe-faithful
+
+Pre-run hypothesis:
+Run 35 failed because per-layer adaptive L1 coefficients let individual layers collapse while still meeting the rough average active-count target. Sharing a single global L1 coefficient across MoE layers should better match the paper and may prevent layerwise dead routing.
+
+Expected result:
+Lower zero-active fraction, lower max-layer load CV, and similar or better matched-step CE than run 35. A useful result should keep active count close to `1.0` without any layer falling near zero active tokens.
+
+Observed result:
 running
 
 Interpretation:
@@ -985,4 +1011,4 @@ Decision:
 pending
 
 Next run:
-If this improves but remains behind, push further toward the paper by trying AdamW-only optimization or longer matched-step training. If it fails, compare against a matching top-1 baseline before rejecting the geometry.
+If global L1 fixes routing health, run to final BPB or longer matched steps. If it still produces many zero-active tokens, try a gentler controller multiplier or minimum-active fallback.

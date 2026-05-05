@@ -889,15 +889,25 @@ class GPT(nn.Module):
 
     @torch.no_grad()
     def update_relu_l1_coeffs(self):
+        moe_blocks = [
+            block.moe
+            for block in self.transformer.h
+            if block.moe is not None and block.moe.router_relu_routing
+        ]
+        if not moe_blocks:
+            return
+        layer_active_counts = []
+        for moe in moe_blocks:
+            count = moe.router_relu_active_count.clamp_min(1.0)
+            layer_active_counts.append(moe.router_relu_active_accum / count)
+        active_count_mean = torch.stack(layer_active_counts).mean()
+        if IS_DISTRIBUTED:
+            dist.all_reduce(active_count_mean, op=dist.ReduceOp.SUM)
+            active_count_mean.div_(WORLD_SIZE)
         for block in self.transformer.h:
             if block.moe is None or not block.moe.router_relu_routing:
                 continue
             moe = block.moe
-            count = moe.router_relu_active_count.clamp_min(1.0)
-            active_count_mean = moe.router_relu_active_accum / count
-            if IS_DISTRIBUTED:
-                dist.all_reduce(active_count_mean, op=dist.ReduceOp.SUM)
-                active_count_mean.div_(WORLD_SIZE)
             moe.update_relu_l1_coef(float(active_count_mean.item()))
             moe.router_relu_active_accum.zero_()
             moe.router_relu_active_count.zero_()
