@@ -204,10 +204,6 @@ class GPTConfig:
     router_bias_ema_beta: float = 0.9
     router_bias_eta: float = 1.0e-3
     router_bias_clamp: float = 0.25
-    router_relu_routing: bool = False
-    router_relu_topk_affinity: bool = False
-    router_relu_l1_init: float = 1.0e-8
-    router_relu_l1_multiplier: float = 1.2
     exclusive_attention: bool = False
     headwise_attention_gate: bool = False
     attention_gate_init: float = 0.95
@@ -336,7 +332,6 @@ class TokenChoiceMoE(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.config = config
         self.n_embd = config.n_embd
         self.num_experts = config.num_experts
         self.top_k = config.top_k
@@ -348,19 +343,8 @@ class TokenChoiceMoE(nn.Module):
         self.router_bias_ema_beta = config.router_bias_ema_beta
         self.router_bias_eta = config.router_bias_eta
         self.router_bias_clamp = config.router_bias_clamp
-        self.router_relu_routing = config.router_relu_routing
-        self.router_relu_topk_affinity = config.router_relu_topk_affinity
-        self.router_relu_l1_multiplier = config.router_relu_l1_multiplier
         assert 1 <= self.top_k <= self.num_experts
         self.router = nn.Linear(config.n_embd, config.num_experts, bias=False)
-        if self.router_relu_routing:
-            self.register_buffer("router_relu_l1_coef", torch.empty((), dtype=torch.float32), persistent=True)
-            self.register_buffer("router_relu_active_accum", torch.empty((), dtype=torch.float32), persistent=False)
-            self.register_buffer("router_relu_active_count", torch.empty((), dtype=torch.float32), persistent=False)
-        else:
-            self.router_relu_l1_coef = None
-            self.router_relu_active_accum = None
-            self.router_relu_active_count = None
         if self.router_expert_bias:
             self.register_buffer("router_bias", torch.empty(config.num_experts), persistent=True)
             self.register_buffer("router_load_ema", torch.empty(config.num_experts), persistent=True)
@@ -384,10 +368,6 @@ class TokenChoiceMoE(nn.Module):
 
     @torch.no_grad()
     def reset_router_state(self):
-        if self.router_relu_routing:
-            self.router_relu_l1_coef.fill_(self.config.router_relu_l1_init)
-            self.router_relu_active_accum.zero_()
-            self.router_relu_active_count.zero_()
         if not self.router_expert_bias:
             return
         self.router_bias.zero_()
@@ -413,24 +393,6 @@ class TokenChoiceMoE(nn.Module):
         self.router_bias.sub_(self.router_bias.mean())
         self.router_bias.clamp_(-self.router_bias_clamp, self.router_bias_clamp)
 
-    @torch.no_grad()
-    def accumulate_router_active(self, active_count_mean):
-        if not self.router_relu_routing:
-            return
-        self.router_relu_active_accum.add_(active_count_mean.detach().to(device=self.router_relu_active_accum.device))
-        self.router_relu_active_count.add_(1.0)
-
-    @torch.no_grad()
-    def update_relu_l1_coef(self, active_count_mean):
-        if not self.router_relu_routing:
-            return
-        multiplier = self.router_relu_l1_multiplier
-        if active_count_mean > float(self.top_k):
-            self.router_relu_l1_coef.mul_(multiplier)
-        else:
-            self.router_relu_l1_coef.div_(multiplier)
-        self.router_relu_l1_coef.clamp_(1.0e-12, 1.0)
-
     def forward(self, x):
         B, T, C = x.shape
         flat_x = x.reshape(B * T, C)
@@ -442,46 +404,8 @@ class TokenChoiceMoE(nn.Module):
         # under the outer bf16 autocast context.
         with torch.amp.autocast(device_type="cuda", enabled=False):
             router_logits = self.router(flat_x.float())      # [N, E]
-            router_probs = F.softmax(router_logits, dim=-1)  # diagnostic only for ReMoE
-            if self.router_relu_routing:
-                relu_scores = F.relu(router_logits)
-                routing_map = relu_scores > 0
-                active_count = routing_map.sum(dim=-1).float()
-                active_count_mean = active_count.mean()
-                zero_active_frac = (active_count == 0).float().mean()
-
-                expert_counts_float = routing_map.sum(dim=0).float()
-                total_assignments = expert_counts_float.sum().clamp_min(1.0)
-                load_frac = expert_counts_float / total_assignments
-
-                # ReMoE's L1 term doubles as load balancing: when routing is
-                # uniform this reduces to the mean L1 gate mass per token.
-                expert_token_weight = expert_counts_float.detach() / float(N * K)
-                relu_l1_loss = E * torch.sum((relu_scores.sum(dim=0) / float(N)) * expert_token_weight)
-                z_loss = router_logits.new_zeros(())
-                load_balance_loss = relu_l1_loss
-                aux_loss = self.router_relu_l1_coef.to(dtype=relu_l1_loss.dtype) * relu_l1_loss
-
-                entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                score_mass = relu_scores / relu_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
-                sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                sigmoid_low_frac = (relu_scores <= 0).float().mean()
-                sigmoid_high_frac = (relu_scores > 1.0).float().mean()
-                load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
-                max_load = load_frac.max()
-                router_bias_abs = router_logits.new_zeros(())
-                router_bias_max_abs = router_logits.new_zeros(())
-                load_ema_cv = router_logits.new_zeros(())
-                relu_l1_coef = self.router_relu_l1_coef.detach().to(dtype=router_logits.dtype)
-            elif self.router_relu_topk_affinity:
-                affinity = F.relu(router_logits)
-                score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
-                route_scores = affinity + self.router_bias if self.router_expert_bias else affinity
-                _, top_idx = torch.topk(route_scores, K, dim=-1)
-                clean_scores = affinity.gather(1, top_idx)
-                top_weight = clean_scores / clean_scores.sum(dim=-1, keepdim=True).clamp_min(1e-9)
-                prob_mean = score_mass.mean(dim=0)
-            elif self.router_sigmoid_affinity:
+            router_probs = F.softmax(router_logits, dim=-1)  # [N, E]
+            if self.router_sigmoid_affinity:
                 affinity = torch.sigmoid(router_logits)
                 score_mass = affinity / affinity.sum(dim=-1, keepdim=True).clamp_min(1e-9)
                 route_scores = affinity + self.router_bias if self.router_expert_bias else affinity
@@ -494,83 +418,44 @@ class TokenChoiceMoE(nn.Module):
                 top_weight = F.softmax(top_logits, dim=-1)       # [N, K]
                 prob_mean = router_probs.mean(dim=0)
 
-            if not self.router_relu_routing:
-                # Router regularization. The hard load fraction is intentionally
-                # detached; gradients flow through mean router probability, not
-                # through the non-differentiable top-k indices.
-                selected_one_hot = F.one_hot(top_idx, num_classes=E).float()  # [N, K, E]
-                load_frac = selected_one_hot.sum(dim=(0, 1)) / float(N * K)
-                load_balance_loss = E * torch.sum(load_frac.detach() * prob_mean)
-                z_loss = torch.logsumexp(router_logits, dim=-1).square().mean()
-                aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
+            # Router regularization. The hard load fraction is intentionally
+            # detached; gradients flow through mean router probability, not
+            # through the non-differentiable top-k indices.
+            selected_one_hot = F.one_hot(top_idx, num_classes=E).float()  # [N, K, E]
+            load_frac = selected_one_hot.sum(dim=(0, 1)) / float(N * K)
+            load_balance_loss = E * torch.sum(load_frac.detach() * prob_mean)
+            z_loss = torch.logsumexp(router_logits, dim=-1).square().mean()
+            aux_loss = self.load_balance_loss_coef * load_balance_loss + self.router_z_loss_coef * z_loss
 
-                entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                if self.router_relu_topk_affinity:
-                    sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                    sigmoid_low_frac = (affinity <= 0).float().mean()
-                    sigmoid_high_frac = (affinity > 1.0).float().mean()
-                elif self.router_sigmoid_affinity:
-                    sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
-                    sigmoid_low_frac = (affinity < 0.01).float().mean()
-                    sigmoid_high_frac = (affinity > 0.99).float().mean()
-                else:
-                    sigmoid_mass_entropy = router_logits.new_zeros(())
-                    sigmoid_low_frac = router_logits.new_zeros(())
-                    sigmoid_high_frac = router_logits.new_zeros(())
-                load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
-                max_load = load_frac.max()
-                if self.router_expert_bias:
-                    bias_abs = self.router_bias.detach().abs()
-                    router_bias_abs = bias_abs.mean()
-                    router_bias_max_abs = bias_abs.max()
-                    load_ema = self.router_load_ema.detach()
-                    load_ema_cv = load_ema.std(unbiased=False) / load_ema.mean().clamp_min(1e-9)
-                else:
-                    router_bias_abs = router_logits.new_zeros(())
-                    router_bias_max_abs = router_logits.new_zeros(())
-                    load_ema_cv = router_logits.new_zeros(())
-                active_count_mean = router_logits.new_tensor(float(K))
-                zero_active_frac = router_logits.new_zeros(())
-                relu_l1_loss = router_logits.new_zeros(())
-                relu_l1_coef = router_logits.new_zeros(())
+            entropy = -(router_probs * router_probs.clamp_min(1e-9).log()).sum(dim=-1).mean()
+            if self.router_sigmoid_affinity:
+                sigmoid_mass_entropy = -(score_mass * score_mass.clamp_min(1e-9).log()).sum(dim=-1).mean()
+                sigmoid_low_frac = (affinity < 0.01).float().mean()
+                sigmoid_high_frac = (affinity > 0.99).float().mean()
+            else:
+                sigmoid_mass_entropy = router_logits.new_zeros(())
+                sigmoid_low_frac = router_logits.new_zeros(())
+                sigmoid_high_frac = router_logits.new_zeros(())
+            load_cv = load_frac.std(unbiased=False) / load_frac.mean().clamp_min(1e-9)
+            max_load = load_frac.max()
+            if self.router_expert_bias:
+                bias_abs = self.router_bias.detach().abs()
+                router_bias_abs = bias_abs.mean()
+                router_bias_max_abs = bias_abs.max()
+                load_ema = self.router_load_ema.detach()
+                load_ema_cv = load_ema.std(unbiased=False) / load_ema.mean().clamp_min(1e-9)
+            else:
+                router_bias_abs = router_logits.new_zeros(())
+                router_bias_max_abs = router_logits.new_zeros(())
+                load_ema_cv = router_logits.new_zeros(())
 
-        if self.router_relu_routing:
-            active_pairs = routing_map.nonzero(as_tuple=False)
-            if active_pairs.numel() == 0:
-                flat_out = torch.zeros(N, C, device=flat_x.device, dtype=self.w_down.dtype)
-                stats = {
-                    "router_entropy": entropy.detach(),
-                    "expert_load_cv": load_cv.detach(),
-                    "max_expert_load": max_load.detach(),
-                    "router_z_loss": z_loss.detach(),
-                    "router_lb_loss": load_balance_loss.detach(),
-                    "router_aux_loss": aux_loss.detach(),
-                    "expert_load_frac": load_frac.detach(),
-                    "router_sigmoid_mass_entropy": sigmoid_mass_entropy.detach(),
-                    "router_sigmoid_low_frac": sigmoid_low_frac.detach(),
-                    "router_sigmoid_high_frac": sigmoid_high_frac.detach(),
-                    "router_bias_abs": router_bias_abs.detach(),
-                    "router_bias_max_abs": router_bias_max_abs.detach(),
-                    "router_load_ema_cv": load_ema_cv.detach(),
-                    "router_relu_active_mean": active_count_mean.detach(),
-                    "router_relu_zero_active_frac": zero_active_frac.detach(),
-                    "router_relu_l1_loss": relu_l1_loss.detach(),
-                    "router_relu_l1_coef": relu_l1_coef.detach(),
-                }
-                return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
-            choice_token = active_pairs[:, 0]
-            choice_expert = active_pairs[:, 1]
-            choice_weight = relu_scores[choice_token, choice_expert]
-        else:
-            choice_expert = top_idx.reshape(-1)
-            choice_token = torch.arange(N, device=flat_x.device).repeat_interleave(K)
-            choice_weight = top_weight.reshape(-1)
-
+        choice_expert = top_idx.reshape(-1)
+        choice_token = torch.arange(N, device=flat_x.device).repeat_interleave(K)
         sort_order = torch.argsort(choice_expert)
         sorted_expert = choice_expert.index_select(0, sort_order)
         sorted_token = choice_token.index_select(0, sort_order)
         sorted_x = flat_x.index_select(0, sorted_token).to(dtype=self.w_gate.dtype)
-        sorted_weight = choice_weight.index_select(0, sort_order).to(dtype=sorted_x.dtype)
+        sorted_weight = top_weight.reshape(-1).index_select(0, sort_order).to(dtype=sorted_x.dtype)
         expert_counts = torch.bincount(sorted_expert, minlength=E).to(torch.int32)
         expert_offsets = torch.cumsum(expert_counts, dim=0, dtype=torch.int32)
 
@@ -600,10 +485,6 @@ class TokenChoiceMoE(nn.Module):
             "router_bias_abs": router_bias_abs.detach(),
             "router_bias_max_abs": router_bias_max_abs.detach(),
             "router_load_ema_cv": load_ema_cv.detach(),
-            "router_relu_active_mean": active_count_mean.detach(),
-            "router_relu_zero_active_frac": zero_active_frac.detach(),
-            "router_relu_l1_loss": relu_l1_loss.detach(),
-            "router_relu_l1_coef": relu_l1_coef.detach(),
         }
         return flat_out.to(dtype=flat_x.dtype).view(B, T, C), aux_loss, stats
 
@@ -878,40 +759,6 @@ class GPT(nn.Module):
             moe.router_load_accum.zero_()
             moe.router_load_count.zero_()
 
-    @torch.no_grad()
-    def accumulate_router_active_counts(self):
-        layer_active = self.last_router_stats.get("layer_router_relu_active_mean")
-        if layer_active is None:
-            return
-        moe_blocks = [block for block in self.transformer.h if block.moe is not None]
-        for block, active_count_mean in zip(moe_blocks, layer_active):
-            block.moe.accumulate_router_active(active_count_mean)
-
-    @torch.no_grad()
-    def update_relu_l1_coeffs(self):
-        moe_blocks = [
-            block.moe
-            for block in self.transformer.h
-            if block.moe is not None and block.moe.router_relu_routing
-        ]
-        if not moe_blocks:
-            return
-        layer_active_counts = []
-        for moe in moe_blocks:
-            count = moe.router_relu_active_count.clamp_min(1.0)
-            layer_active_counts.append(moe.router_relu_active_accum / count)
-        active_count_mean = torch.stack(layer_active_counts).mean()
-        if IS_DISTRIBUTED:
-            dist.all_reduce(active_count_mean, op=dist.ReduceOp.SUM)
-            active_count_mean.div_(WORLD_SIZE)
-        for block in self.transformer.h:
-            if block.moe is None or not block.moe.router_relu_routing:
-                continue
-            moe = block.moe
-            moe.update_relu_l1_coef(float(active_count_mean.item()))
-            moe.router_relu_active_accum.zero_()
-            moe.router_relu_active_count.zero_()
-
     def forward(self, idx, targets=None, reduction="mean"):
         B, T = idx.size()
         assert T <= self.cos.size(1)
@@ -1124,10 +971,6 @@ DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
-ROUTER_RELU_ROUTING = False
-ROUTER_RELU_TOPK_AFFINITY = False
-ROUTER_RELU_L1_INIT = 1.0e-8
-ROUTER_RELU_L1_MULTIPLIER = 1.2
 ROUTER_SIGMOID_AFFINITY = True
 ROUTER_EXPERT_BIAS = True
 ROUTER_BIAS_EMA_BETA = 0.9
@@ -1148,7 +991,7 @@ VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INI
 # Optimization.
 INIT_STD_GLOBAL = 1.0
 TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ranks
-DEVICE_BATCH_SIZE = 16 if ROUTER_RELU_ROUTING else 32
+DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
 EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
 ADAMW_LR = 0.003
 MUON_LR_WIDTH_FACTOR = 0.2
@@ -1162,7 +1005,7 @@ GRAD_CLIP_NORM = 1.0
 WARMUP_STEPS = 100
 ESTIMATED_TOTAL_STEPS = int(os.environ.get("AR_ESTIMATED_TOTAL_STEPS", "2390"))
 MIN_LR_FRAC = 0.1
-ENABLE_COMPILE = not ROUTER_RELU_ROUTING
+ENABLE_COMPILE = True          # speed experiment: compile static model regions if sparse MoE permits it
 
 # Optional actual-run gradient diagnostics. Disabled for normal benchmark runs.
 GRAD_DIAG = os.environ.get("AR_GRAD_DIAG", "0") == "1"
@@ -1207,10 +1050,6 @@ config = GPTConfig(
     router_bias_ema_beta=ROUTER_BIAS_EMA_BETA,
     router_bias_eta=ROUTER_BIAS_ETA,
     router_bias_clamp=ROUTER_BIAS_CLAMP,
-    router_relu_routing=ROUTER_RELU_ROUTING,
-    router_relu_topk_affinity=ROUTER_RELU_TOPK_AFFINITY,
-    router_relu_l1_init=ROUTER_RELU_L1_INIT,
-    router_relu_l1_multiplier=ROUTER_RELU_L1_MULTIPLIER,
     exclusive_attention=EXCLUSIVE_ATTENTION,
     headwise_attention_gate=HEADWISE_ATTENTION_GATE,
     attention_gate_init=ATTENTION_GATE_INIT,
@@ -1383,32 +1222,6 @@ def reduce_router_stats(stats):
         mean_key="mean_router_load_ema_cv",
         max_key="max_layer_router_load_ema_cv",
     )
-    add_layer_summary(
-        "layer_router_relu_active_mean",
-        mean_key="mean_router_relu_active_mean",
-        min_key="min_layer_router_relu_active_mean",
-        max_key="max_layer_router_relu_active_mean",
-        old_key="router_relu_active_mean",
-    )
-    add_layer_summary(
-        "layer_router_relu_zero_active_frac",
-        mean_key="mean_router_relu_zero_active_frac",
-        max_key="max_layer_router_relu_zero_active_frac",
-        old_key="router_relu_zero_active_frac",
-    )
-    add_layer_summary(
-        "layer_router_relu_l1_loss",
-        mean_key="mean_router_relu_l1_loss",
-        max_key="max_layer_router_relu_l1_loss",
-        old_key="router_relu_l1_loss",
-    )
-    add_layer_summary(
-        "layer_router_relu_l1_coef",
-        mean_key="mean_router_relu_l1_coef",
-        min_key="min_layer_router_relu_l1_coef",
-        max_key="max_layer_router_relu_l1_coef",
-        old_key="router_relu_l1_coef",
-    )
 
     summary.setdefault("mean_router_bias_abs", 0.0)
     summary.setdefault("max_router_bias_abs", 0.0)
@@ -1562,7 +1375,6 @@ while True:
             train_total_loss_for_log = raw_model.last_total_loss
             (loss / grad_accum_steps).backward()
             raw_model.accumulate_router_loads()
-            raw_model.accumulate_router_active_counts()
         x, y, epoch = next(train_loader)
 
     train_loss_tensor = maybe_all_reduce_mean(train_loss_for_log.float())
@@ -1594,7 +1406,6 @@ while True:
     torch.nn.utils.clip_grad_norm_(raw_model.parameters(), GRAD_CLIP_NORM)
     optimizer.step()
     raw_model.update_router_biases()
-    raw_model.update_relu_l1_coeffs()
     model.zero_grad(set_to_none=True)
 
     train_loss_f = float(train_loss_tensor.item())
@@ -1645,19 +1456,12 @@ while True:
         cv = last_router_stats_for_summary.get("expert_load_cv", float("nan"))
         mx = last_router_stats_for_summary.get("max_expert_load", float("nan"))
         aux = last_router_stats_for_summary.get("router_aux_loss", float("nan"))
-        relu_active = last_router_stats_for_summary.get("router_relu_active_mean", float("nan"))
-        relu_coef = last_router_stats_for_summary.get("router_relu_l1_coef", float("nan"))
-        relu_fields = (
-            f"relu_k: {relu_active:.2f} | l1: {relu_coef:.1e} | "
-            if ROUTER_RELU_ROUTING and math.isfinite(relu_active) else ""
-        )
         print(
             f"\rstep {step:05d} ({pct_done:.1f}%) | "
             f"loss: {debiased_smooth_loss:.6f} | lrm: {lrm:.2f} | "
             f"dt: {dt*1000:.0f}ms | tok/sec: {tok_per_sec:,} | "
             f"mfu: {mfu:.1f}% | epoch: {epoch} | "
             f"router_ent: {ent:.3f} | load_cv: {cv:.3f} | max_load: {mx:.3f} | aux: {aux:.4f} | "
-            f"{relu_fields}"
             f"remaining: {remaining:.0f}s    ",
             end="",
             flush=True,
@@ -1770,10 +1574,6 @@ if IS_MASTER:
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
     print(f"dense_early_layers: {DENSE_EARLY_LAYERS}")
     print(f"dense_hidden_dim: {DENSE_HIDDEN_DIM}")
-    print(f"router_relu_routing: {int(ROUTER_RELU_ROUTING)}")
-    print(f"router_relu_topk_affinity: {int(ROUTER_RELU_TOPK_AFFINITY)}")
-    print(f"router_relu_l1_init: {ROUTER_RELU_L1_INIT:.6g}")
-    print(f"router_relu_l1_multiplier: {ROUTER_RELU_L1_MULTIPLIER:.6g}")
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
@@ -1827,20 +1627,6 @@ if IS_MASTER:
         "max_layer_router_bias_abs",
         "mean_router_load_ema_cv",
         "max_layer_router_load_ema_cv",
-        "router_relu_active_mean",
-        "mean_router_relu_active_mean",
-        "min_layer_router_relu_active_mean",
-        "max_layer_router_relu_active_mean",
-        "router_relu_zero_active_frac",
-        "mean_router_relu_zero_active_frac",
-        "max_layer_router_relu_zero_active_frac",
-        "router_relu_l1_loss",
-        "mean_router_relu_l1_loss",
-        "max_layer_router_relu_l1_loss",
-        "router_relu_l1_coef",
-        "mean_router_relu_l1_coef",
-        "min_layer_router_relu_l1_coef",
-        "max_layer_router_relu_l1_coef",
         "router_lb_loss",
         "router_aux_loss",
     ]:
