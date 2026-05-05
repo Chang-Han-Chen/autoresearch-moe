@@ -215,16 +215,12 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
-        self.value_resid_alpha = nn.Parameter(torch.zeros(())) if layer_idx > 0 else None
 
-    def forward(self, x, first_v, cos_sin, window_size):
+    def forward(self, x, cos_sin, window_size):
         B, T, C = x.size()
         q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
         k = self.c_k(x).view(B, T, self.n_kv_head, self.head_dim)
         v = self.c_v(x).view(B, T, self.n_kv_head, self.head_dim)
-        layer_v = v
-        if first_v is not None and self.value_resid_alpha is not None:
-            v = v + self.value_resid_alpha.to(dtype=v.dtype) * first_v.to(dtype=v.dtype)
 
         cos, sin = cos_sin
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
@@ -234,7 +230,7 @@ class CausalSelfAttention(nn.Module):
         y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
-        return y, layer_v
+        return y
 
 
 class SwiGLUExpert(nn.Module):
@@ -347,12 +343,12 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = TokenChoiceMoE(config)
 
-    def forward(self, x, first_v, cos_sin, window_size):
-        attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
+    def forward(self, x, cos_sin, window_size):
+        attn_out = self.attn(norm(x), cos_sin, window_size)
         x = x + attn_out
         moe_out, aux_loss, stats = self.moe(norm(x))
         x = x + moe_out
-        return x, aux_loss, stats, layer_v
+        return x, aux_loss, stats
 
 
 class GPT(nn.Module):
@@ -398,8 +394,6 @@ class GPT(nn.Module):
             init_weight(block.attn.c_v.weight, self.config.n_embd)
             init_weight(block.attn.c_proj.weight, self.config.n_embd)
             block.attn.qk_gamma.fill_(1.0)
-            if block.attn.value_resid_alpha is not None:
-                block.attn.value_resid_alpha.zero_()
 
             init_weight(block.moe.router.weight, self.config.n_embd)
             init_weight(block.moe.w_gate, self.config.n_embd)
@@ -480,11 +474,6 @@ class GPT(nn.Module):
     def setup_optimizer(self, adamw_lr=0.003,
                         weight_decay=0.1, adam_betas=(0.9, 0.95), adam_eps=1e-8):
         attention_scalar_params = [block.attn.qk_gamma for block in self.transformer.h]
-        attention_scalar_params.extend(
-            block.attn.value_resid_alpha
-            for block in self.transformer.h
-            if block.attn.value_resid_alpha is not None
-        )
         embedding_params = list(self.transformer.wte.parameters())
         lm_head_params = list(self.lm_head.parameters())
 
@@ -538,19 +527,11 @@ class GPT(nn.Module):
         x = norm(x)
         if self.grad_diag_enabled:
             self.last_first_v_resid_for_diag = None
-        first_v = None
         aux_loss = x.new_zeros(())
         stats_by_key = {}
 
         for i, block in enumerate(self.transformer.h):
-            x, block_aux, block_stats, layer_v = block(x, first_v, cos_sin, self.window_sizes[i])
-            if first_v is None:
-                if self.grad_diag_enabled and torch.is_grad_enabled():
-                    first_v = layer_v.clone()
-                    first_v.retain_grad()
-                    self.last_first_v_resid_for_diag = first_v
-                else:
-                    first_v = layer_v
+            x, block_aux, block_stats = block(x, cos_sin, self.window_sizes[i])
             aux_loss = aux_loss + block_aux
             for key, value in block_stats.items():
                 stats_by_key.setdefault(key, []).append(value)
@@ -966,7 +947,12 @@ def collect_grad_diag(model):
                 sq_sum = sq_sum + param.grad.detach().float().square().sum()
         return sq_sum.sqrt()
 
-    alpha_params = [block.attn.value_resid_alpha for block in blocks if block.attn.value_resid_alpha is not None]
+    alpha_params = [
+        param
+        for block in blocks
+        for param in [getattr(block.attn, "value_resid_alpha", None)]
+        if param is not None
+    ]
     alpha_values = [p.detach().float().abs() for p in alpha_params]
     alpha_grads = [p.grad.detach().float().abs() for p in alpha_params if p.grad is not None]
 
@@ -1207,11 +1193,13 @@ if IS_DISTRIBUTED:
     dist.all_reduce(peak_vram_tensor, op=dist.ReduceOp.MAX)
 peak_vram_mb = float(peak_vram_tensor.item())
 qk_gamma_tensor = torch.stack([block.attn.qk_gamma.detach().float() for block in raw_model.transformer.h])
-value_resid_alpha_tensor = torch.stack([
-    block.attn.value_resid_alpha.detach().float()
+value_resid_alpha_values = [
+    param.detach().float()
     for block in raw_model.transformer.h
-    if block.attn.value_resid_alpha is not None
-])
+    for param in [getattr(block.attn, "value_resid_alpha", None)]
+    if param is not None
+]
+value_resid_alpha_tensor = torch.stack(value_resid_alpha_values) if value_resid_alpha_values else None
 
 if IS_MASTER:
     print("---")
@@ -1234,9 +1222,10 @@ if IS_MASTER:
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
-    print(f"mean_value_resid_alpha: {value_resid_alpha_tensor.mean().item():.6f}")
-    print(f"min_value_resid_alpha:  {value_resid_alpha_tensor.min().item():.6f}")
-    print(f"max_value_resid_alpha:  {value_resid_alpha_tensor.max().item():.6f}")
+    if value_resid_alpha_tensor is not None:
+        print(f"mean_value_resid_alpha: {value_resid_alpha_tensor.mean().item():.6f}")
+        print(f"min_value_resid_alpha:  {value_resid_alpha_tensor.min().item():.6f}")
+        print(f"max_value_resid_alpha:  {value_resid_alpha_tensor.max().item():.6f}")
     print(f"train_ce_loss:    {last_train_ce_loss_for_summary:.6f}")
     print(f"train_total_loss: {last_train_total_loss_for_summary:.6f}")
     for key in [
