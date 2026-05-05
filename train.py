@@ -201,6 +201,7 @@ class GPTConfig:
     load_balance_loss_coef: float = 1.0e-2
     value_mix_enabled: bool = False
     value_mix_learned: bool = True
+    value_mix_start_layer: int = 1
     value_mix_first_init: float = 0.5
     value_mix_local_init: float = 0.5
 
@@ -219,7 +220,7 @@ class CausalSelfAttention(nn.Module):
         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)
         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
         self.qk_gamma = nn.Parameter(torch.ones(()))
-        self.value_mix_enabled = config.value_mix_enabled and layer_idx > 0
+        self.value_mix_enabled = config.value_mix_enabled and layer_idx >= config.value_mix_start_layer
         self.value_mix_learned = config.value_mix_learned
         if self.value_mix_enabled:
             if self.value_mix_learned:
@@ -761,8 +762,9 @@ ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 8.5e-3
 VALUE_MIX_ENABLED = True
 VALUE_MIX_LEARNED = False
-VALUE_MIX_FIRST_INIT = 0.75
-VALUE_MIX_LOCAL_INIT = 0.25
+VALUE_MIX_START_LAYER = 1
+VALUE_MIX_FIRST_INIT = 3.0
+VALUE_MIX_LOCAL_INIT = 1.0
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
@@ -820,6 +822,7 @@ config = GPTConfig(
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
     value_mix_enabled=VALUE_MIX_ENABLED,
     value_mix_learned=VALUE_MIX_LEARNED,
+    value_mix_start_layer=VALUE_MIX_START_LAYER,
     value_mix_first_init=VALUE_MIX_FIRST_INIT,
     value_mix_local_init=VALUE_MIX_LOCAL_INIT,
 )
@@ -1291,6 +1294,7 @@ if IS_MASTER:
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")
     print(f"value_mix_enabled: {int(VALUE_MIX_ENABLED)}")
     print(f"value_mix_learned: {int(VALUE_MIX_LEARNED)}")
+    print(f"value_mix_start_layer: {VALUE_MIX_START_LAYER}")
     if value_mix_first_tensor is not None:
         print(f"mean_value_mix_first: {value_mix_first_tensor.mean().item():.6f}")
         print(f"min_value_mix_first:  {value_mix_first_tensor.min().item():.6f}")
