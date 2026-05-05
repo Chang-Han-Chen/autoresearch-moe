@@ -481,6 +481,32 @@ Expected result:
 If identity-preserving gating is the key, `0.99` should match or beat the `0.98` validation BPB without router regression. If the best point needs some initial attenuation, `0.99` should lose despite similar matched-step CE.
 
 Observed result:
+`val_bpb 0.940078`, `2509` steps, `657.7M` tokens, `30.7GB` peak VRAM, and `22.24%` MFU. This was essentially tied with `0.98` but fractionally worse by `0.000002` BPB. Matched-step loss was also a tie: step `1000` was `2.922022` vs `0.98` `2.922391`, step `1200` was `2.852183` vs `2.852224`, step `1600` was `2.756154` vs `2.755895`, and step `2000` was `2.664366` vs `2.664526`. Router health was very clean: mean load CV `0.0611`, max-layer load CV `0.0825`, mean max load `0.0698`, and max-layer max load `0.0735`. Final mean gate-bias sigmoid was `0.954`.
+
+Interpretation:
+The optimum is very close to identity, and pushing from `0.98` to `0.99` does not buy more BPB. The clean router suggests the run is valid, but there is no reason to replace the `0.98` baseline.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard/tie; keep `0.98`
+
+Next run:
+Test a centered identity-preserving gate, `2*sigmoid(g(x))`, initialized with zero bias so the initial effective gate is exactly `1.0`. This removes the large positive bias and lets each head attenuate or amplify around identity.
+
+### run 18: centered headwise gated attention
+
+Kind/thread:
+architecture / attention
+
+Pre-run hypothesis:
+The best sigmoid-gate runs want to stay close to identity. A centered gate `2*sigmoid(g(x))`, initialized at `1.0`, may preserve the useful query/head modulation while avoiding large positive gate biases, AdamW decay of those biases, and the restriction that the gate can only attenuate attention.
+
+Expected result:
+If the useful effect is dynamic modulation around the normal attention path, centered gating should beat or match the `0.98` sigmoid gate. If the one-sided attenuation of the paper gate is important, centered gating may regress despite cleaner initialization.
+
+Observed result:
 pending
 
 Interpretation:
