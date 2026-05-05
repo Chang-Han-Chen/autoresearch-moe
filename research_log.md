@@ -908,3 +908,29 @@ repair
 
 Next run:
 Try fixed-K ReLU with stronger load-balance coefficient, starting at `0.01`. If load health improves without losing CE, this path remains alive. If CE worsens or load still concentrates, restore sigmoid-bias and switch ideas.
+
+### run 33: fixed-K selected ReLU affinities, load-balance 0.01
+
+Kind/thread:
+router / differentiable-routing
+
+Pre-run hypothesis:
+Run 32 showed that fixed-K ReLU is close in CE but load-concentrating. Raising load-balance loss from `0.003` to `0.01` may repair the specific failure mode while preserving the normal packed-dispatch speed and the possible ReLU scoring benefit.
+
+Expected result:
+Load CV and max load should move materially toward the sigmoid-bias baseline by steps `200-600`. A useful repair needs to keep matched-step CE close to or better than run 32; if stronger load pressure worsens CE while load remains bad, ReLU scoring is not worth more tuning now.
+
+Observed result:
+running
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+If this repairs load and improves CE, run to final BPB. If not, restore the sigmoid-bias baseline and move to another architecture idea.
