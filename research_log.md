@@ -785,6 +785,32 @@ Expected result:
 If attention value amplitude is the part that benefits from depth-dependent damping, this should improve or at least avoid the large early regression seen when MLP scaling was included. Router health should remain normal because no router input or expert computation is scaled. If it is clearly worse by step `360`, the fixed V scale is probably also underpowering useful attention content.
 
 Observed result:
+Aborted at step `400` after it was clearly worse than the two-dense baseline. Step `100` was `5.300067` vs baseline `5.249734`, step `200` was `4.089912` vs `3.998785`, and step `360` was `3.366658` vs `3.344945`. Router load stayed healthy: at step `360`, router entropy was `1.337`, load CV `0.124`, and max load `0.076`.
+
+Interpretation:
+Removing MLP/expert scaling did not rescue deterministic attention-value depth scaling. The failure is still not router health; it is underpowered attention value content. This also explains why adding V scaling to the MLP quarter-power run removed the earlier warmup advantage.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard/abort; try the mixed-V plus attention-gate version once as the requested paired attention-only variant
+
+Next run:
+Scale both mixed V and the headwise attention gate by one-based `1/sqrt(ell)`, still with no MLP or expert-input scaling.
+
+### run 29: mixed-V plus attention-gate depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+Mixed-V-only scaling was bad, but pairing it with headwise attention-gate scaling may make the entire attention branch more internally consistent. This is likely to reduce attention amplitude even more, so the main question is whether it repairs the branch mismatch or simply worsens underpowering.
+
+Expected result:
+If the gate was the missing paired control, step `100`/`200` should improve relative to V-only and the step `360` gap should narrow. If it is worse by step `200` or `360`, abort and close fixed attention-depth scaling.
+
+Observed result:
 pending
 
 Interpretation:
