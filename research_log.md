@@ -694,3 +694,29 @@ discard/abort; restore prior two-dense baseline behavior
 
 Next run:
 Close raw `1/sqrt(ell)` scaling for now. Any future residual-branch scaling should be much gentler or learned, but this is not as promising as the shared-expert direction.
+
+### run 25: MLP-only quarter-power depth scaling
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The previous branch-only `1/sqrt(ell)` input scale likely over-shrank SwiGLU MLPs because SwiGLU is roughly quadratic in its input scale: both the gate and up projections see the scaled input. Scaling dense MLP and post-route MoE expert inputs by `ell**(-1/4)` should make the resulting MLP branch closer to `ell**(-1/2)` while leaving attention values, router logits, QK norm, gates, and the LM head unchanged.
+
+Expected result:
+If the quadratic-scale argument is right, this run should avoid the immediate post-warmup regression seen in run 24. Router health should stay close to baseline because router inputs are unscaled. The run must continue to at least step `1000` before decision, so the comparison should use step `1000` and later diagnostics rather than only early warmup.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending
