@@ -947,16 +947,16 @@ Expected result:
 Router load should be healthier than run 32 at comparable steps, and CE should be at least as good as run 32. If router AdamW helps, this may also support moving the router to AdamW in the main sigmoid baseline later. If it does not, close ReLU routing.
 
 Observed result:
-running
+Aborted at step `409`. Router AdamW did not improve the ReLU tradeoff. It was worse than fixed-K ReLU+Muon in CE and did not repair load. Step `100` was `5.274224` vs ReLU+Muon `5.267034`; step `200` was `4.023729` vs `4.012571`; step `260` was `3.621788` vs `3.616593`. Load CV at step `260` was `0.530`, essentially no better than ReLU+Muon `0.543` and far worse than the sigmoid baseline `0.218`; by step `409`, load CV was `0.703` and max load `0.215`.
 
 Interpretation:
-pending
+Router optimizer is not the missing repair. Across true ReMoE, fixed-K ReLU, stronger load loss, and router AdamW, the consistent pattern is that ReLU routing is close only when forced through fixed top-k, but it creates much worse load concentration and never beats sigmoid-bias on CE. This is enough to close ReLU/ReMoE for now.
 
 Agrees with hypothesis:
-pending
+no
 
 Decision:
-pending
+discard; restore sigmoid-bias baseline
 
 Next run:
-If router AdamW helps, continue or run a sigmoid-baseline router-Adam control. If not, restore current best sigmoid-bias stack and move on.
+Restore the current fixed-wall best stack: sigmoid affinities, expert bias, `LOAD_BALANCE_LOSS_COEF=0.003`, router back on Muon, and ReMoE flags off. Move to another fundamental idea rather than continuing ReLU routing.
