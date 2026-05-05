@@ -286,3 +286,55 @@ keep as current baseline
 
 Next run:
 Run a softmax-router control with the same fixed value mix and `LOAD_BALANCE_LOSS_COEF=0.003` to check whether the gain is truly from sigmoid/bias or mostly from lowering load-balance pressure.
+
+### run 10: softmax router control with load-balance 0.003
+
+Kind/thread:
+router / control
+
+Pre-run hypothesis:
+The sigmoid/bias gain might actually come from lowering load-balance pressure from `0.0085` to `0.003`, not from the sigmoid/bias mechanism itself. A softmax-router control with the same fixed value mix and `LOAD_BALANCE_LOSS_COEF=0.003` isolates that possibility.
+
+Expected result:
+If the coefficient change is the main mechanism, softmax `0.003` should approach the sigmoid/bias `0.942848` BPB. If sigmoid/bias is essential, softmax `0.003` should regress and/or show worse load.
+
+Observed result:
+`val_bpb 0.947950`, `2554` steps, `669.5M` tokens, `29.9GB` peak VRAM, `22.63%` MFU. Train CE `2.638674`, total train loss `2.643481`. Mean load CV `0.822`, max-layer load CV `1.774`, mean max load `0.204`, max-layer max load `0.485`, router load-balance diagnostic `1.556`, and aux loss `0.004807`.
+
+Interpretation:
+Lowering the load-balance coefficient is not sufficient. Without sigmoid/bias, softmax routing becomes highly imbalanced and BPB is worse than even the fixed value-mix softmax run. The best run's improvement really depends on the sigmoid/bias router controller.
+
+Agrees with hypothesis:
+yes, for the "sigmoid/bias is essential" branch
+
+Decision:
+discard control
+
+Next run:
+Test whether sigmoid/bias can stabilize normalized learned value mix. If it both stabilizes and improves BPB, the interventions compound; otherwise keep fixed `(0.75,0.25)`.
+
+### run 11: normalized learned value mix with sigmoid/bias
+
+Kind/thread:
+architecture / value-mix-router-interaction
+
+Pre-run hypothesis:
+Normalized learned value mix failed mainly because it created a worst-layer routing spike. Since sigmoid/bias with `0.003` load loss repaired router health, it may stabilize normalized learned mix and allow the learned ratio/scale to improve on the fixed mix.
+
+Expected result:
+Compared with normalized learned mix alone, max-layer load should improve dramatically. A true compound win also needs BPB near or below `0.942848`.
+
+Observed result:
+`val_bpb 0.947005`, `2600` steps, `681.6M` tokens, `30.2GB` peak VRAM, `23.04%` MFU. Train CE `2.594792`, total train loss `2.598185`. The learned mix ended at mean `alpha_1 0.246`, mean `alpha_2 0.423`, and mean `gamma 0.412`. Router health was good: mean load CV `0.076`, max-layer load CV `0.149`, mean max load `0.072`, max-layer max load `0.085`, router load-balance diagnostic `1.005`, and max router bias abs `0.124`.
+
+Interpretation:
+Sigmoid/bias did stabilize normalized learned mix: max-layer max load improved from `0.322` without sigmoid/bias to `0.085`. But it did not improve quality; BPB regressed well behind the fixed `(0.75,0.25)` sigmoid/bias baseline. The interaction is stabilizing, not compounding. Keep fixed value mix for now.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard as quality baseline, keep as diagnostic evidence
+
+Next run:
+Restore fixed `(0.75,0.25)` plus sigmoid/bias plus `0.003` load balance as the current baseline. Further gains should probably come from expert geometry, router controller tuning, or a smaller fixed value-mix ratio sweep around the first-heavy solution, not from learned normalized value mix.
