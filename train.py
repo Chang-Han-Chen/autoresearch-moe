@@ -217,6 +217,7 @@ class GPTConfig:
     value_mix_gamma_init: float = 1.0
     dense_early_layers: int = 0
     dense_hidden_dim: int = 3584
+    prenorm_layer_scale: bool = False
 
 
 class CausalSelfAttention(nn.Module):
@@ -502,18 +503,25 @@ class Block(nn.Module):
         self.attn = CausalSelfAttention(config, layer_idx)
         self.moe = None
         self.ffn = None
+        self.prenorm_scale = 1.0 / math.sqrt(layer_idx + 1) if config.prenorm_layer_scale else 1.0
         if layer_idx < config.dense_early_layers:
             self.ffn = DenseSwiGLU(config.n_embd, config.dense_hidden_dim)
         else:
             self.moe = TokenChoiceMoE(config)
 
+    def pre_norm(self, x):
+        x = norm(x)
+        if self.prenorm_scale != 1.0:
+            x = x * self.prenorm_scale
+        return x
+
     def forward(self, x, first_v, cos_sin, window_size):
-        attn_out, layer_v = self.attn(norm(x), first_v, cos_sin, window_size)
+        attn_out, layer_v = self.attn(self.pre_norm(x), first_v, cos_sin, window_size)
         x = x + attn_out
         if self.moe is not None:
-            ffn_out, aux_loss, stats = self.moe(norm(x))
+            ffn_out, aux_loss, stats = self.moe(self.pre_norm(x))
         else:
-            ffn_out = self.ffn(norm(x))
+            ffn_out = self.ffn(self.pre_norm(x))
             aux_loss = x.new_zeros(())
             stats = {}
         x = x + ffn_out
@@ -969,6 +977,7 @@ TOP_K = 2
 MOE_HIDDEN_DIM = 1792
 DENSE_EARLY_LAYERS = 2
 DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
+PRENORM_LAYER_SCALE = True
 ROUTER_Z_LOSS_COEF = 7.5e-4
 LOAD_BALANCE_LOSS_COEF = 0.003
 ROUTER_SIGMOID_AFFINITY = True
@@ -1043,6 +1052,7 @@ config = GPTConfig(
     moe_hidden_dim=MOE_HIDDEN_DIM,
     dense_early_layers=DENSE_EARLY_LAYERS,
     dense_hidden_dim=DENSE_HIDDEN_DIM,
+    prenorm_layer_scale=PRENORM_LAYER_SCALE,
     router_z_loss_coef=ROUTER_Z_LOSS_COEF,
     load_balance_loss_coef=LOAD_BALANCE_LOSS_COEF,
     router_sigmoid_affinity=ROUTER_SIGMOID_AFFINITY,
@@ -1574,6 +1584,7 @@ if IS_MASTER:
     print(f"moe_hidden_dim:   {MOE_HIDDEN_DIM}")
     print(f"dense_early_layers: {DENSE_EARLY_LAYERS}")
     print(f"dense_hidden_dim: {DENSE_HIDDEN_DIM}")
+    print(f"prenorm_layer_scale: {int(PRENORM_LAYER_SCALE)}")
     print(f"mean_qk_gamma:    {qk_gamma_tensor.mean().item():.6f}")
     print(f"min_qk_gamma:     {qk_gamma_tensor.min().item():.6f}")
     print(f"max_qk_gamma:     {qk_gamma_tensor.max().item():.6f}")

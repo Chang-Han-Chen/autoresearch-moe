@@ -642,3 +642,29 @@ keep two dense layers as the current baseline; stop dense-depth tuning for now
 
 Next run:
 Move back to the high-priority architecture queue instead of continuing small dense-depth/LR-schedule tweaks. Use both fixed-wall and matched-step diagnostics for any intervention that changes throughput.
+
+### run 23: depth-scaled pre-norm
+
+Kind/thread:
+architecture / residual-scaling
+
+Pre-run hypothesis:
+The current pre-norm blocks feed every layer's attention and FFN with unit-RMS activations, so deeper layers may inject updates at roughly the same scale as shallow layers even though the residual stream has accumulated more transformations. Multiplying each residual-stream pre-norm by `1/sqrt(ell)` with one-based layer index may make deeper layers act more like residual refinements, improving stability without changing QK norm or the final LM head path.
+
+Expected result:
+If the scale is helpful, BPB should improve or matched-step CE should be lower with little throughput or memory change. QK gamma may compensate upward because Q/K are still explicitly RMS-normalized after projection, while V, attention gates, routers, and FFNs see the reduced deeper-layer input scale. Router health should stay clean; if max load rises or BPB worsens, the scale is probably starving upper MoE layers.
+
+Observed result:
+pending
+
+Interpretation:
+pending
+
+Agrees with hypothesis:
+pending
+
+Decision:
+pending
+
+Next run:
+pending
