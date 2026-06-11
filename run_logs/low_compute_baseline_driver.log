@@ -1,0 +1,21 @@
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T22:20:10+00:00] finished F2 simple
+[2026-06-11T22:20:10+00:00] finished low-compute baseline suite

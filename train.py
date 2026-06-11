@@ -5,8 +5,8 @@ Usage:
     uv run torchrun --standalone --nproc_per_node=4 train.py
 
 Design constraints:
-- prepare.py is read-only. We import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, and
-  evaluate_bpb, but the evaluation contract is unchanged.
+- prepare.py owns MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, and evaluate_bpb. The
+  evaluation contract is unchanged.
 - The optimizer algorithm remains MuonAdamW + AdamW from the dense baseline.
   Experiment agents may change learning-rate values, but not the optimizer family.
 - The model is intentionally a scale-down of GPT-OSS-style sparse FFN models:
@@ -18,6 +18,7 @@ os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 import gc
+import importlib.util
 import math
 import sys
 import time
@@ -54,7 +55,27 @@ from kernels import get_kernel
 cap = torch.cuda.get_device_capability()
 # varunneal's FA3 is Hopper only; use kernels-community on non-Hopper GPUs.
 repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
-fa3 = get_kernel(repo).flash_attn_interface
+try:
+    fa3 = get_kernel(repo).flash_attn_interface
+except Exception as primary_kernel_error:
+    from pathlib import Path
+
+    fallback_repo = "kernels-community/flash-attn3"
+    try:
+        fa3 = get_kernel(fallback_repo, revision="main", trust_remote_code=True).flash_attn_interface
+    except Exception as fallback_kernel_error:
+        hub_kernel_root = Path.home() / ".cache" / "huggingface" / "hub" / "kernels--kernels-community--flash-attn3"
+        build_paths = sorted(
+            hub_kernel_root.glob("snapshots/*/build/torch*-cu*-x86_64-linux"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        if not build_paths:
+            raise fallback_kernel_error from primary_kernel_error
+        sys.path.insert(0, str(build_paths[0]))
+        import flash_attn3
+
+        fa3 = flash_attn3.flash_attn_interface
 
 from prepare import (
     MAX_SEQ_LEN,
@@ -954,46 +975,54 @@ class MuonAdamW(torch.optim.Optimizer):
 
 
 # ---------------------------------------------------------------------------
-# Hyperparameters. Agents may edit these directly; no CLI flags are needed.
+# Hyperparameters. Agents may edit these directly; env overrides are used for
+# scale sweeps so one tmux driver can run several sizes without source edits.
 # ---------------------------------------------------------------------------
 
-# Model architecture: about 100M active params, about 300M total params.
-DEPTH = 8
-MODEL_DIM = 768
-HEAD_DIM = 128
-NUM_HEADS = MODEL_DIM // HEAD_DIM
-NUM_KV_HEADS = 2
-WINDOW_PATTERN = "SSSL"
-NUM_EXPERTS = 16
-TOP_K = 2
-MOE_HIDDEN_DIM = 1792
-DENSE_EARLY_LAYERS = 2
-DENSE_HIDDEN_DIM = TOP_K * MOE_HIDDEN_DIM
-ROUTER_Z_LOSS_COEF = 7.5e-4
-LOAD_BALANCE_LOSS_COEF = 0.003
-ROUTER_SIGMOID_AFFINITY = True
-ROUTER_EXPERT_BIAS = True
-ROUTER_BIAS_EMA_BETA = 0.9
-ROUTER_BIAS_ETA = 1.0e-3
-ROUTER_BIAS_CLAMP = 0.25
-EXCLUSIVE_ATTENTION = True
-HEADWISE_ATTENTION_GATE = True
-ATTENTION_GATE_INIT = 0.98
-ATTENTION_GATE_SCALE = 1.0
-VALUE_MIX_ENABLED = True
-VALUE_MIX_LEARNED = False
-VALUE_MIX_START_LAYER = 1
-VALUE_MIX_NORMALIZED = False
-VALUE_MIX_FIRST_INIT = 0.75
-VALUE_MIX_LOCAL_INIT = 0.25
+def env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Model architecture.
+DEPTH = int(os.environ.get("AR_DEPTH", "14"))
+MODEL_DIM = int(os.environ.get("AR_MODEL_DIM", "1536"))
+HEAD_DIM = int(os.environ.get("AR_HEAD_DIM", "128"))
+NUM_HEADS = int(os.environ.get("AR_NUM_HEADS", str(MODEL_DIM // HEAD_DIM)))
+NUM_KV_HEADS = int(os.environ.get("AR_NUM_KV_HEADS", "2"))
+WINDOW_PATTERN = os.environ.get("AR_WINDOW_PATTERN", "SSSL")
+NUM_EXPERTS = int(os.environ.get("AR_NUM_EXPERTS", "16"))
+TOP_K = int(os.environ.get("AR_TOP_K", "2"))
+MOE_HIDDEN_DIM = int(os.environ.get("AR_MOE_HIDDEN_DIM", "3584"))
+DENSE_EARLY_LAYERS = int(os.environ.get("AR_DENSE_EARLY_LAYERS", "2"))
+DENSE_HIDDEN_DIM = int(os.environ.get("AR_DENSE_HIDDEN_DIM", str(TOP_K * MOE_HIDDEN_DIM)))
+ROUTER_Z_LOSS_COEF = float(os.environ.get("AR_ROUTER_Z_LOSS_COEF", "7.5e-4"))
+LOAD_BALANCE_LOSS_COEF = float(os.environ.get("AR_LOAD_BALANCE_LOSS_COEF", "0.003"))
+ROUTER_SIGMOID_AFFINITY = env_bool("AR_ROUTER_SIGMOID_AFFINITY", True)
+ROUTER_EXPERT_BIAS = env_bool("AR_ROUTER_EXPERT_BIAS", True)
+ROUTER_BIAS_EMA_BETA = float(os.environ.get("AR_ROUTER_BIAS_EMA_BETA", "0.9"))
+ROUTER_BIAS_ETA = float(os.environ.get("AR_ROUTER_BIAS_ETA", "1.0e-3"))
+ROUTER_BIAS_CLAMP = float(os.environ.get("AR_ROUTER_BIAS_CLAMP", "0.25"))
+EXCLUSIVE_ATTENTION = env_bool("AR_EXCLUSIVE_ATTENTION", True)
+HEADWISE_ATTENTION_GATE = env_bool("AR_HEADWISE_ATTENTION_GATE", True)
+ATTENTION_GATE_INIT = float(os.environ.get("AR_ATTENTION_GATE_INIT", "0.98"))
+ATTENTION_GATE_SCALE = float(os.environ.get("AR_ATTENTION_GATE_SCALE", "1.0"))
+VALUE_MIX_ENABLED = env_bool("AR_VALUE_MIX_ENABLED", True)
+VALUE_MIX_LEARNED = env_bool("AR_VALUE_MIX_LEARNED", False)
+VALUE_MIX_START_LAYER = int(os.environ.get("AR_VALUE_MIX_START_LAYER", "1"))
+VALUE_MIX_NORMALIZED = env_bool("AR_VALUE_MIX_NORMALIZED", False)
+VALUE_MIX_FIRST_INIT = float(os.environ.get("AR_VALUE_MIX_FIRST_INIT", "0.75"))
+VALUE_MIX_LOCAL_INIT = float(os.environ.get("AR_VALUE_MIX_LOCAL_INIT", "0.25"))
 VALUE_MIX_GAMMA_INIT = math.sqrt(VALUE_MIX_FIRST_INIT ** 2 + VALUE_MIX_LOCAL_INIT ** 2)
 
 # Optimization.
 INIT_STD_GLOBAL = 1.0
 TOTAL_BATCH_SIZE = 2**18       # global tokens per optimizer step, across all ranks
-DEVICE_BATCH_SIZE = 32         # per-rank microbatch, safe default for 80GB H100
-EVAL_BATCH_SIZE = 64           # rank-0 eval only; no gradients
-ADAMW_LR = 0.003
+DEVICE_BATCH_SIZE = int(os.environ.get("AR_DEVICE_BATCH_SIZE", "16"))  # per-rank microbatch
+EVAL_BATCH_SIZE = int(os.environ.get("AR_EVAL_BATCH_SIZE", "64"))      # rank-0 eval only; no gradients
+ADAMW_LR = float(os.environ.get("AR_ADAMW_LR", "0.001"))
 MUON_LR_WIDTH_FACTOR = 0.2
 MUON_MOMENTUM = 0.95
 MUON_NS_STEPS = 5
@@ -1024,6 +1053,7 @@ autocast_ctx = torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16)
 H100_BF16_PEAK_FLOPS = 989.5e12
 TRAIN_TIME_BUDGET = int(os.environ.get("AR_TIME_BUDGET", str(TIME_BUDGET)))
 MAX_TRAIN_STEPS = int(os.environ.get("AR_MAX_STEPS", "0"))
+USE_STEP_BUDGET = MAX_TRAIN_STEPS > 0
 
 tokenizer = Tokenizer.from_directory()
 vocab_size = tokenizer.get_vocab_size()
@@ -1382,7 +1412,10 @@ while True:
     train_total_loss_tensor = maybe_all_reduce_mean(train_total_loss_for_log.float())
 
     # Progress and schedules.
-    progress = min(total_training_time / TRAIN_TIME_BUDGET, 1.0)
+    if USE_STEP_BUDGET:
+        progress = min(step / max(1, MAX_TRAIN_STEPS), 1.0)
+    else:
+        progress = min(total_training_time / TRAIN_TIME_BUDGET, 1.0)
     lrm = get_lr_multiplier(step)
     for group in optimizer.param_groups:
         group["lr"] = group["initial_lr"] * lrm
@@ -1443,7 +1476,14 @@ while True:
     pct_done = 100 * progress
     tok_per_sec = int(TOTAL_BATCH_SIZE / dt)
     mfu = 100 * num_flops_per_token * TOTAL_BATCH_SIZE / dt / (H100_BF16_PEAK_FLOPS * WORLD_SIZE)
-    remaining = max(0, TRAIN_TIME_BUDGET - total_training_time)
+    if USE_STEP_BUDGET:
+        if step > 10:
+            avg_step_time = total_training_time / max(1, step - 10)
+        else:
+            avg_step_time = dt
+        remaining = max(0, MAX_TRAIN_STEPS - step - 1) * avg_step_time
+    else:
+        remaining = max(0, TRAIN_TIME_BUDGET - total_training_time)
 
     stats = raw_model.last_router_stats
     reduced_router_stats = reduce_router_stats(stats) if stats else {}
@@ -1476,8 +1516,8 @@ while True:
 
     step += 1
 
-    reached_time_budget = step > 10 and total_training_time >= TRAIN_TIME_BUDGET
-    reached_step_budget = MAX_TRAIN_STEPS > 0 and step >= MAX_TRAIN_STEPS
+    reached_time_budget = not USE_STEP_BUDGET and step > 10 and total_training_time >= TRAIN_TIME_BUDGET
+    reached_step_budget = USE_STEP_BUDGET and step >= MAX_TRAIN_STEPS
     done = torch.tensor(
         [1 if (IS_MASTER and (reached_time_budget or reached_step_budget)) else 0],
         dtype=torch.int32,

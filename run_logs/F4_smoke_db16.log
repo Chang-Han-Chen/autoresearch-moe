@@ -1,0 +1,108 @@
+W0610 19:45:50.691000 3278743 site-packages/torch/distributed/run.py:803] 
+W0610 19:45:50.691000 3278743 site-packages/torch/distributed/run.py:803] *****************************************
+W0610 19:45:50.691000 3278743 site-packages/torch/distributed/run.py:803] Setting OMP_NUM_THREADS environment variable for each process to be 1 in default, to avoid your system being overloaded, please further tune the variable for optimal performance in your application as needed. 
+W0610 19:45:50.691000 3278743 site-packages/torch/distributed/run.py:803] *****************************************
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Vocab size: 8,192
+Distributed: world_size=4, rank=0, local_rank=0
+Model config: {'sequence_len': 2048, 'vocab_size': 8192, 'n_layer': 14, 'n_head': 12, 'n_kv_head': 2, 'n_embd': 1536, 'window_pattern': 'SSSL', 'num_experts': 16, 'top_k': 2, 'moe_hidden_dim': 3584, 'router_z_loss_coef': 0.00075, 'load_balance_loss_coef': 0.003, 'router_sigmoid_affinity': True, 'router_expert_bias': True, 'router_bias_ema_beta': 0.9, 'router_bias_eta': 0.001, 'router_bias_clamp': 0.25, 'exclusive_attention': True, 'headwise_attention_gate': True, 'attention_gate_init': 0.98, 'attention_gate_scale': 1.0, 'value_mix_enabled': True, 'value_mix_learned': False, 'value_mix_start_layer': 1, 'value_mix_normalized': False, 'value_mix_first_init': 0.75, 'value_mix_local_init': 0.25, 'value_mix_gamma_init': 0.7905694150420949, 'dense_early_layers': 2, 'dense_hidden_dim': 7168}
+Parameter counts:
+  wte                     : 12,582,912
+  lm_head                 : 12,582,912
+  transformer_matrices    : 3,314,577,408
+  expert_total            : 3,170,893,824
+  expert_active           : 396,361,728
+  scalars                 : 182
+  total                   : 3,339,743,414
+  active                  : 565,211,318
+Estimated active FLOPs per token: 3.655508e+09
+AdamW peak lr: 0.001
+Muon peak lr (attn_q): 0.00783837
+Muon peak lr (attn_k): 0.00783837
+Muon peak lr (attn_v): 0.00783837
+Muon peak lr (attn_proj): 0.00783837
+Muon peak lr (router): 0.00783837
+Muon peak lr (expert_gate): 0.0119733
+Muon peak lr (expert_up): 0.0119733
+Muon peak lr (expert_down): 0.0119733
+Muon peak lr (dense_gate): 0.0169328
+Muon peak lr (dense_up): 0.0169328
+Muon peak lr (dense_down): 0.0169328
+Time budget: 450s
+Estimated total steps for LR schedule: 43122
+Max train steps: 1
+Global batch tokens: 262,144
+Device batch size: 16
+Gradient accumulation steps: 2
+Eval batch size: 64
+step 00000 (0.0%) | loss: 9.501198 | lrm: 0.00 | dt: 42512ms | tok/sec: 6,166 | mfu: 0.6% | epoch: 1 | router_ent: 2.369 | load_cv: 0.208 | max_load: 0.091 | aux: 0.0093 | remaining: 0s    
+/opt/conda/lib/python3.13/site-packages/torch/distributed/distributed_c10d.py:4876: UserWarning: barrier(): using the device under current context. You can specify `device_id` in `init_process_group` to mute this warning.
+  warnings.warn(  # warn only once
+---
+val_bpb:          3.387869
+training_seconds: 0.0
+total_seconds:    139.1
+startup_seconds:  2.2
+peak_vram_mb:     58266.1
+mfu_percent:      0.00
+total_tokens_M:   0.3
+num_steps:        1
+num_params_M:     3339.7
+active_params_M:  565.2
+world_size:       4
+depth:            14
+model_dim:        1536
+num_experts:      16
+top_k:            2
+moe_hidden_dim:   3584
+dense_early_layers: 2
+dense_hidden_dim: 7168
+mean_qk_gamma:    1.000000
+min_qk_gamma:     1.000000
+max_qk_gamma:     1.000000
+exclusive_attention: 1
+headwise_attention_gate: 1
+attention_gate_scale: 1.000000
+mean_attention_gate_bias_sigmoid: 0.980000
+min_attention_gate_bias_sigmoid:  0.980000
+max_attention_gate_bias_sigmoid:  0.980000
+mean_attention_gate_bias_effective: 0.980000
+mean_attention_gate_weight_rms:   0.000000
+value_mix_enabled: 1
+value_mix_learned: 0
+value_mix_start_layer: 1
+value_mix_normalized: 0
+mean_value_mix_first: 0.750000
+min_value_mix_first:  0.750000
+max_value_mix_first:  0.750000
+mean_value_mix_local: 0.250000
+min_value_mix_local:  0.250000
+max_value_mix_local:  0.250000
+train_ce_loss:    9.491864
+train_total_loss: 9.501198
+router_entropy:   2.368922
+mean_router_entropy: 2.368922
+min_layer_router_entropy: 2.343696
+expert_load_cv:   0.208482
+mean_expert_load_cv: 0.208482
+max_layer_expert_load_cv: 0.310225
+max_expert_load:  0.091023
+mean_max_expert_load: 0.091023
+max_layer_max_expert_load: 0.107445
+router_z_loss:    10.486717
+mean_router_z_loss: 10.486717
+max_layer_router_z_loss: 10.665977
+mean_router_sigmoid_mass_entropy: 2.685742
+min_layer_router_sigmoid_mass_entropy: 2.683370
+mean_router_sigmoid_low_frac: 0.000016
+max_layer_router_sigmoid_low_frac: 0.000172
+mean_router_sigmoid_high_frac: 0.000001
+max_layer_router_sigmoid_high_frac: 0.000003
+mean_router_bias_abs: 0.000000
+max_router_bias_abs: 0.000000
+max_layer_router_bias_abs: 0.000000
+mean_router_load_ema_cv: 0.000000
+max_layer_router_load_ema_cv: 0.000000
+router_lb_loss:   1.008331
+router_aux_loss:  0.009334

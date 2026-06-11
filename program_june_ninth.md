@@ -38,7 +38,7 @@ Use the repo's normal command:
 uv run torchrun --standalone --nproc_per_node=4 train.py
 ```
 
-For fixed-wall runs, use the default 5-minute budget from `prepare.py`.
+For fixed-wall runs, use the default 450-second budget from `prepare.py`.
 
 For matched-step diagnostics, use:
 
@@ -139,7 +139,7 @@ if a higher-expert run has worse fixed-wall BPB but clearly better matched-step 
 Router safety rule:
 do not select a run as default if it has severe router collapse, defined as any of:
 
-- max-layer max expert load `>= 0.25`
+- max-layer max expert load `>= max(0.25, 2 / NUM_EXPERTS)`; for `E=4`, uniform load is already `0.25`, so use `0.50` as the severe-collapse threshold
 - max-layer load CV `>= 1.0`
 - min-layer router entropy near zero
 - expert bias hitting the clamp

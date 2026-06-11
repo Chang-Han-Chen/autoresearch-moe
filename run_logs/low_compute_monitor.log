@@ -1,0 +1,720 @@
+
+===== 2026-06-11T20:42:59+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss         37:51 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+        37:51 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1926687 1585497 Sl+        05:41 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+1926760 1926687 Rsl        05:38 /opt/conda/bin/python3 -u train.py
+1926761 1926687 Rsl        05:38 /opt/conda/bin/python3 -u train.py
+1926762 1926687 Rsl        05:38 /opt/conda/bin/python3 -u train.py
+1926763 1926687 Rsl        05:38 /opt/conda/bin/python3 -u train.py
+1980007 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF1_simple_lr003.log
+step 01749 (25.0%) | loss: 2.887340 | lrm: 0.88 | dt: 174ms | tok/sec: 1,504,698 | mfu: 23.0% | epoch: 1 | router_ent: 1.742 | load_cv: 0.481 | max_load: 0.135 | aux: 0.0102 | remaining: 925s    
+step 01750 (25.0%) | loss: 2.887432 | lrm: 0.88 | dt: 176ms | tok/sec: 1,487,557 | mfu: 22.7% | epoch: 1 | router_ent: 1.720 | load_cv: 0.470 | max_load: 0.137 | aux: 0.0102 | remaining: 925s    
+step 01751 (25.0%) | loss: 2.889065 | lrm: 0.88 | dt: 176ms | tok/sec: 1,493,694 | mfu: 22.8% | epoch: 1 | router_ent: 1.742 | load_cv: 0.477 | max_load: 0.136 | aux: 0.0102 | remaining: 925s    
+step 01752 (25.0%) | loss: 2.890043 | lrm: 0.88 | dt: 175ms | tok/sec: 1,496,221 | mfu: 22.9% | epoch: 1 | router_ent: 1.726 | load_cv: 0.465 | max_load: 0.134 | aux: 0.0102 | remaining: 924s    
+step 01753 (25.0%) | loss: 2.888751 | lrm: 0.88 | dt: 174ms | tok/sec: 1,505,396 | mfu: 23.0% | epoch: 1 | router_ent: 1.746 | load_cv: 0.450 | max_load: 0.131 | aux: 0.0101 | remaining: 924s    
+step 01754 (25.1%) | loss: 2.891820 | lrm: 0.88 | dt: 176ms | tok/sec: 1,489,455 | mfu: 22.8% | epoch: 1 | router_ent: 1.728 | load_cv: 0.473 | max_load: 0.135 | aux: 0.0102 | remaining: 924s    
+step 01755 (25.1%) | loss: 2.891336 | lrm: 0.88 | dt: 177ms | tok/sec: 1,482,900 | mfu: 22.7% | epoch: 1 | router_ent: 1.732 | load_cv: 0.486 | max_load: 0.139 | aux: 0.0102 | remaining: 924s    
+step 01756 (25.1%) | loss: 2.889207 | lrm: 0.88 | dt: 176ms | tok/sec: 1,485,284 | mfu: 22.7% | epoch: 1 | router_ent: 1.735 | load_cv: 0.490 | max_load: 0.140 | aux: 0.0103 | remaining: 924s    
+step 01757 (25.1%) | loss: 2.887633 | lrm: 0.88 | dt: 178ms | tok/sec: 1,471,842 | mfu: 22.5% | epoch: 1 | router_ent: 1.730 | load_cv: 0.476 | max_load: 0.137 | aux: 0.0102 | remaining: 924s    
+step 01758 (25.1%) | loss: 2.889727 | lrm: 0.88 | dt: 174ms | tok/sec: 1,502,656 | mfu: 23.0% | epoch: 1 | router_ent: 1.738 | load_cv: 0.483 | max_load: 0.138 | aux: 0.0102 | remaining: 923s    
+step 01759 (25.1%) | loss: 2.890544 | lrm: 0.88 | dt: 192ms | tok/sec: 1,367,645 | mfu: 20.9% | epoch: 1 | router_ent: 1.736 | load_cv: 0.464 | max_load: 0.136 | aux: 0.0101 | remaining: 923s    
+step 01760 (25.1%) | loss: 2.891821 | lrm: 0.88 | dt: 189ms | tok/sec: 1,389,514 | mfu: 21.2% | epoch: 1 | router_ent: 1.735 | load_cv: 0.480 | max_load: 0.138 | aux: 0.0101 | remaining: 923s    
+step 01761 (25.2%) | loss: 2.891462 | lrm: 0.88 | dt: 172ms | tok/sec: 1,520,035 | mfu: 23.2% | epoch: 1 | router_ent: 1.738 | load_cv: 0.465 | max_load: 0.134 | aux: 0.0101 | remaining: 923s    
+step 01762 (25.2%) | loss: 2.885020 | lrm: 0.88 | dt: 175ms | tok/sec: 1,500,245 | mfu: 22.9% | epoch: 1 | router_ent: 1.725 | load_cv: 0.492 | max_load: 0.141 | aux: 0.0103 | remaining: 923s    
+step 01763 (25.2%) | loss: 2.886454 | lrm: 0.88 | dt: 173ms | tok/sec: 1,515,276 | mfu: 23.1% | epoch: 1 | router_ent: 1.744 | load_cv: 0.455 | max_load: 0.134 | aux: 0.0101 | remaining: 923s    
+step 01764 (25.2%) | loss: 2.891264 | lrm: 0.88 | dt: 176ms | tok/sec: 1,488,830 | mfu: 22.7% | epoch: 1 | router_ent: 1.725 | load_cv: 0.470 | max_load: 0.139 | aux: 0.0102 | remaining: 922s    
+step 01765 (25.2%) | loss: 2.887281 | lrm: 0.88 | dt: 177ms | tok/sec: 1,483,216 | mfu: 22.7% | epoch: 1 | router_ent: 1.744 | load_cv: 0.458 | max_load: 0.137 | aux: 0.0101 | remaining: 922s    
+step 01766 (25.2%) | loss: 2.885559 | lrm: 0.88 | dt: 176ms | tok/sec: 1,493,568 | mfu: 22.8% | epoch: 1 | router_ent: 1.741 | load_cv: 0.474 | max_load: 0.137 | aux: 0.0101 | remaining: 922s    
+step 01767 (25.2%) | loss: 2.885564 | lrm: 0.88 | dt: 175ms | tok/sec: 1,496,618 | mfu: 22.9% | epoch: 1 | router_ent: 1.739 | load_cv: 0.483 | max_load: 0.139 | aux: 0.0102 | remaining: 922s    
+step 01768 (25.3%) | loss: 2.887370 | lrm: 0.88 | dt: 173ms | tok/sec: 1,511,661 | mfu: 23.1% | epoch: 1 | router_ent: 1.728 | load_cv: 0.468 | max_load: 0.136 | aux: 0.0101 | remaining: 922s    
+step 01769 (25.3%) | loss: 2.889860 | lrm: 0.88 | dt: 175ms | tok/sec: 1,494,460 | mfu: 22.8% | epoch: 1 | router_ent: 1.750 | load_cv: 0.450 | max_load: 0.132 | aux: 0.0100 | remaining: 921s    
+step 01770 (25.3%) | loss: 2.885685 | lrm: 0.88 | dt: 175ms | tok/sec: 1,496,194 | mfu: 22.9% | epoch: 1 | router_ent: 1.731 | load_cv: 0.474 | max_load: 0.135 | aux: 0.0102 | remaining: 921s    
+step 01771 (25.3%) | loss: 2.883467 | lrm: 0.88 | dt: 178ms | tok/sec: 1,470,334 | mfu: 22.5% | epoch: 1 | router_ent: 1.744 | load_cv: 0.477 | max_load: 0.137 | aux: 0.0102 | remaining: 921s    
+step 01772 (25.3%) | loss: 2.878965 | lrm: 0.88 | dt: 176ms | tok/sec: 1,486,131 | mfu: 22.7% | epoch: 1 | router_ent: 1.728 | load_cv: 0.480 | max_load: 0.138 | aux: 0.0102 | remaining: 921s    
+step 01773 (25.3%) | loss: 2.877398 | lrm: 0.88 | dt: 177ms | tok/sec: 1,480,961 | mfu: 22.6% | epoch: 1 | router_ent: 1.741 | load_cv: 0.485 | max_load: 0.140 | aux: 0.0102 | remaining: 921s    
+step 01774 (25.3%) | loss: 2.883957 | lrm: 0.88 | dt: 176ms | tok/sec: 1,490,707 | mfu: 22.8% | epoch: 1 | router_ent: 1.723 | load_cv: 0.478 | max_load: 0.137 | aux: 0.0102 | remaining: 921s    
+step 01775 (25.4%) | loss: 2.887310 | lrm: 0.88 | dt: 175ms | tok/sec: 1,497,464 | mfu: 22.9% | epoch: 1 | router_ent: 1.744 | load_cv: 0.477 | max_load: 0.136 | aux: 0.0101 | remaining: 920s    
+step 01776 (25.4%) | loss: 2.891944 | lrm: 0.88 | dt: 177ms | tok/sec: 1,483,775 | mfu: 22.7% | epoch: 1 | router_ent: 1.731 | load_cv: 0.457 | max_load: 0.132 | aux: 0.0101 | remaining: 920s    
+step 01777 (25.4%) | loss: 2.896944 | lrm: 0.88 | dt: 176ms | tok/sec: 1,491,759 | mfu: 22.8% | epoch: 1 | router_ent: 1.742 | load_cv: 0.444 | max_load: 0.131 | aux: 0.0100 | remaining: 920s    
+step 01778 (25.4%) | loss: 2.896231 | lrm: 0.87 | dt: 177ms | tok/sec: 1,484,606 | mfu: 22.7% | epoch: 1 | router_ent: 1.736 | load_cv: 0.450 | max_load: 0.134 | aux: 0.0100 | remaining: 920s    
+step 01779 (25.4%) | loss: 2.897582 | lrm: 0.87 | dt: 176ms | tok/sec: 1,485,880 | mfu: 22.7% | epoch: 1 | router_ent: 1.734 | load_cv: 0.463 | max_load: 0.136 | aux: 0.0101 | remaining: 920s    
+step 01780 (25.4%) | loss: 2.890204 | lrm: 0.87 | dt: 175ms | tok/sec: 1,495,470 | mfu: 22.8% | epoch: 1 | router_ent: 1.735 | load_cv: 0.461 | max_load: 0.131 | aux: 0.0101 | remaining: 920s    
+step 01781 (25.4%) | loss: 2.888591 | lrm: 0.87 | dt: 175ms | tok/sec: 1,498,744 | mfu: 22.9% | epoch: 1 | router_ent: 1.729 | load_cv: 0.467 | max_load: 0.131 | aux: 0.0101 | remaining: 919s    
+step 01782 (25.5%) | loss: 2.897028 | lrm: 0.87 | dt: 175ms | tok/sec: 1,495,378 | mfu: 22.8% | epoch: 1 | router_ent: 1.741 | load_cv: 0.462 | max_load: 0.131 | aux: 0.0100 | remaining: 919s    
+step 01783 (25.5%) | loss: 2.897361 | lrm: 0.87 | dt: 176ms | tok/sec: 1,490,580 | mfu: 22.8% | epoch: 1 | router_ent: 1.725 | load_cv: 0.469 | max_load: 0.133 | aux: 0.0101 | remaining: 919s    
+--- gpu
+0, 95, 73, 33845, 81559, 685.75, 700.00
+1, 96, 61, 33845, 81559, 698.61, 700.00
+2, 100, 73, 33845, 81559, 688.35, 700.00
+3, 98, 61, 33845, 81559, 689.32, 700.00
+
+===== 2026-06-11T20:52:59+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss         47:51 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+        47:51 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1926687 1585497 Sl+        15:41 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+1926760 1926687 Rsl        15:39 /opt/conda/bin/python3 -u train.py
+1926761 1926687 Rsl        15:39 /opt/conda/bin/python3 -u train.py
+1926762 1926687 Rsl        15:39 /opt/conda/bin/python3 -u train.py
+1926763 1926687 Rsl        15:39 /opt/conda/bin/python3 -u train.py
+2073676 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF1_simple_lr003.log
+step 05127 (73.2%) | loss: 2.614433 | lrm: 0.25 | dt: 174ms | tok/sec: 1,508,991 | mfu: 23.0% | epoch: 1 | router_ent: 1.701 | load_cv: 0.386 | max_load: 0.126 | aux: 0.0097 | remaining: 329s    
+step 05128 (73.3%) | loss: 2.616511 | lrm: 0.25 | dt: 175ms | tok/sec: 1,501,035 | mfu: 22.9% | epoch: 1 | router_ent: 1.704 | load_cv: 0.389 | max_load: 0.126 | aux: 0.0096 | remaining: 329s    
+step 05129 (73.3%) | loss: 2.613804 | lrm: 0.25 | dt: 176ms | tok/sec: 1,485,930 | mfu: 22.7% | epoch: 1 | router_ent: 1.704 | load_cv: 0.387 | max_load: 0.124 | aux: 0.0097 | remaining: 329s    
+step 05130 (73.3%) | loss: 2.611400 | lrm: 0.25 | dt: 177ms | tok/sec: 1,483,645 | mfu: 22.7% | epoch: 1 | router_ent: 1.705 | load_cv: 0.393 | max_load: 0.125 | aux: 0.0097 | remaining: 328s    
+step 05131 (73.3%) | loss: 2.611712 | lrm: 0.25 | dt: 176ms | tok/sec: 1,491,362 | mfu: 22.8% | epoch: 1 | router_ent: 1.701 | load_cv: 0.394 | max_load: 0.126 | aux: 0.0097 | remaining: 328s    
+step 05132 (73.3%) | loss: 2.611911 | lrm: 0.25 | dt: 175ms | tok/sec: 1,494,161 | mfu: 22.8% | epoch: 1 | router_ent: 1.699 | load_cv: 0.394 | max_load: 0.126 | aux: 0.0097 | remaining: 328s    
+step 05133 (73.3%) | loss: 2.605950 | lrm: 0.25 | dt: 174ms | tok/sec: 1,506,966 | mfu: 23.0% | epoch: 1 | router_ent: 1.698 | load_cv: 0.393 | max_load: 0.127 | aux: 0.0097 | remaining: 328s    
+step 05134 (73.3%) | loss: 2.595264 | lrm: 0.25 | dt: 174ms | tok/sec: 1,503,377 | mfu: 23.0% | epoch: 1 | router_ent: 1.696 | load_cv: 0.390 | max_load: 0.126 | aux: 0.0097 | remaining: 328s    
+step 05135 (73.4%) | loss: 2.598803 | lrm: 0.25 | dt: 176ms | tok/sec: 1,488,703 | mfu: 22.7% | epoch: 1 | router_ent: 1.698 | load_cv: 0.380 | max_load: 0.125 | aux: 0.0097 | remaining: 328s    
+step 05136 (73.4%) | loss: 2.602542 | lrm: 0.25 | dt: 177ms | tok/sec: 1,477,478 | mfu: 22.6% | epoch: 1 | router_ent: 1.698 | load_cv: 0.387 | max_load: 0.125 | aux: 0.0097 | remaining: 327s    
+step 05137 (73.4%) | loss: 2.601198 | lrm: 0.25 | dt: 176ms | tok/sec: 1,492,457 | mfu: 22.8% | epoch: 1 | router_ent: 1.697 | load_cv: 0.392 | max_load: 0.127 | aux: 0.0097 | remaining: 327s    
+step 05138 (73.4%) | loss: 2.607706 | lrm: 0.25 | dt: 176ms | tok/sec: 1,490,855 | mfu: 22.8% | epoch: 1 | router_ent: 1.700 | load_cv: 0.380 | max_load: 0.123 | aux: 0.0096 | remaining: 327s    
+step 05139 (73.4%) | loss: 2.605033 | lrm: 0.25 | dt: 178ms | tok/sec: 1,470,806 | mfu: 22.5% | epoch: 1 | router_ent: 1.699 | load_cv: 0.385 | max_load: 0.124 | aux: 0.0097 | remaining: 327s    
+step 05140 (73.4%) | loss: 2.598624 | lrm: 0.25 | dt: 179ms | tok/sec: 1,468,211 | mfu: 22.4% | epoch: 1 | router_ent: 1.709 | load_cv: 0.384 | max_load: 0.125 | aux: 0.0097 | remaining: 327s    
+step 05141 (73.4%) | loss: 2.599186 | lrm: 0.25 | dt: 176ms | tok/sec: 1,491,281 | mfu: 22.8% | epoch: 1 | router_ent: 1.704 | load_cv: 0.381 | max_load: 0.123 | aux: 0.0096 | remaining: 327s    
+step 05142 (73.5%) | loss: 2.594772 | lrm: 0.25 | dt: 174ms | tok/sec: 1,508,649 | mfu: 23.0% | epoch: 1 | router_ent: 1.702 | load_cv: 0.376 | max_load: 0.123 | aux: 0.0096 | remaining: 326s    
+step 05143 (73.5%) | loss: 2.592597 | lrm: 0.25 | dt: 175ms | tok/sec: 1,494,045 | mfu: 22.8% | epoch: 1 | router_ent: 1.704 | load_cv: 0.382 | max_load: 0.124 | aux: 0.0096 | remaining: 326s    
+step 05144 (73.5%) | loss: 2.590304 | lrm: 0.25 | dt: 175ms | tok/sec: 1,501,017 | mfu: 22.9% | epoch: 1 | router_ent: 1.704 | load_cv: 0.373 | max_load: 0.123 | aux: 0.0096 | remaining: 326s    
+step 05145 (73.5%) | loss: 2.590924 | lrm: 0.25 | dt: 174ms | tok/sec: 1,507,944 | mfu: 23.0% | epoch: 1 | router_ent: 1.700 | load_cv: 0.375 | max_load: 0.122 | aux: 0.0096 | remaining: 326s    
+step 05146 (73.5%) | loss: 2.588756 | lrm: 0.25 | dt: 177ms | tok/sec: 1,484,243 | mfu: 22.7% | epoch: 1 | router_ent: 1.697 | load_cv: 0.383 | max_load: 0.124 | aux: 0.0097 | remaining: 326s    
+step 05147 (73.5%) | loss: 2.588659 | lrm: 0.25 | dt: 175ms | tok/sec: 1,500,341 | mfu: 22.9% | epoch: 1 | router_ent: 1.699 | load_cv: 0.384 | max_load: 0.122 | aux: 0.0097 | remaining: 325s    
+step 05148 (73.5%) | loss: 2.590917 | lrm: 0.25 | dt: 174ms | tok/sec: 1,505,846 | mfu: 23.0% | epoch: 1 | router_ent: 1.699 | load_cv: 0.384 | max_load: 0.122 | aux: 0.0096 | remaining: 325s    
+step 05149 (73.6%) | loss: 2.597047 | lrm: 0.25 | dt: 174ms | tok/sec: 1,504,889 | mfu: 23.0% | epoch: 1 | router_ent: 1.692 | load_cv: 0.393 | max_load: 0.124 | aux: 0.0097 | remaining: 325s    
+step 05150 (73.6%) | loss: 2.594113 | lrm: 0.25 | dt: 173ms | tok/sec: 1,518,677 | mfu: 23.2% | epoch: 1 | router_ent: 1.690 | load_cv: 0.395 | max_load: 0.124 | aux: 0.0097 | remaining: 325s    
+step 05151 (73.6%) | loss: 2.598906 | lrm: 0.25 | dt: 174ms | tok/sec: 1,506,250 | mfu: 23.0% | epoch: 1 | router_ent: 1.687 | load_cv: 0.384 | max_load: 0.122 | aux: 0.0097 | remaining: 325s    
+step 05152 (73.6%) | loss: 2.596935 | lrm: 0.25 | dt: 176ms | tok/sec: 1,491,160 | mfu: 22.8% | epoch: 1 | router_ent: 1.686 | load_cv: 0.389 | max_load: 0.125 | aux: 0.0097 | remaining: 325s    
+step 05153 (73.6%) | loss: 2.594207 | lrm: 0.25 | dt: 177ms | tok/sec: 1,480,971 | mfu: 22.6% | epoch: 1 | router_ent: 1.689 | load_cv: 0.390 | max_load: 0.125 | aux: 0.0097 | remaining: 324s    
+step 05154 (73.6%) | loss: 2.587438 | lrm: 0.25 | dt: 174ms | tok/sec: 1,507,328 | mfu: 23.0% | epoch: 1 | router_ent: 1.688 | load_cv: 0.395 | max_load: 0.125 | aux: 0.0097 | remaining: 324s    
+step 05155 (73.6%) | loss: 2.589775 | lrm: 0.25 | dt: 174ms | tok/sec: 1,507,369 | mfu: 23.0% | epoch: 1 | router_ent: 1.694 | load_cv: 0.404 | max_load: 0.127 | aux: 0.0097 | remaining: 324s    
+step 05156 (73.7%) | loss: 2.588114 | lrm: 0.25 | dt: 173ms | tok/sec: 1,511,624 | mfu: 23.1% | epoch: 1 | router_ent: 1.691 | load_cv: 0.392 | max_load: 0.124 | aux: 0.0097 | remaining: 324s    
+step 05157 (73.7%) | loss: 2.590598 | lrm: 0.25 | dt: 174ms | tok/sec: 1,509,072 | mfu: 23.1% | epoch: 1 | router_ent: 1.693 | load_cv: 0.379 | max_load: 0.123 | aux: 0.0096 | remaining: 324s    
+step 05158 (73.7%) | loss: 2.594006 | lrm: 0.25 | dt: 174ms | tok/sec: 1,507,884 | mfu: 23.0% | epoch: 1 | router_ent: 1.702 | load_cv: 0.373 | max_load: 0.123 | aux: 0.0096 | remaining: 324s    
+step 05159 (73.7%) | loss: 2.596720 | lrm: 0.25 | dt: 174ms | tok/sec: 1,503,453 | mfu: 23.0% | epoch: 1 | router_ent: 1.696 | load_cv: 0.372 | max_load: 0.122 | aux: 0.0096 | remaining: 323s    
+step 05160 (73.7%) | loss: 2.595613 | lrm: 0.25 | dt: 177ms | tok/sec: 1,481,999 | mfu: 22.6% | epoch: 1 | router_ent: 1.704 | load_cv: 0.369 | max_load: 0.123 | aux: 0.0096 | remaining: 323s    
+step 05161 (73.7%) | loss: 2.593047 | lrm: 0.25 | dt: 175ms | tok/sec: 1,498,697 | mfu: 22.9% | epoch: 1 | router_ent: 1.698 | load_cv: 0.372 | max_load: 0.123 | aux: 0.0096 | remaining: 323s    
+--- gpu
+0, 100, 74, 33845, 81559, 691.46, 700.00
+1, 95, 61, 33845, 81559, 689.44, 700.00
+2, 98, 74, 33845, 81559, 689.46, 700.00
+3, 100, 63, 33845, 81559, 691.45, 700.00
+
+===== 2026-06-11T21:02:59+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss         57:51 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+        57:51 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        04:05 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        04:02 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        04:02 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        04:02 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        04:02 /opt/conda/bin/python3 -u train.py
+2149425 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 00618 (4.4%) | loss: 3.130656 | lrm: 1.00 | dt: 340ms | tok/sec: 770,137 | mfu: 23.8% | epoch: 1 | router_ent: 1.527 | load_cv: 0.544 | max_load: 0.135 | aux: 0.0111 | remaining: 4543s    
+step 00619 (4.4%) | loss: 3.128714 | lrm: 1.00 | dt: 336ms | tok/sec: 781,239 | mfu: 24.1% | epoch: 1 | router_ent: 1.525 | load_cv: 0.533 | max_load: 0.134 | aux: 0.0111 | remaining: 4542s    
+step 00620 (4.4%) | loss: 3.125772 | lrm: 1.00 | dt: 337ms | tok/sec: 777,376 | mfu: 24.0% | epoch: 1 | router_ent: 1.535 | load_cv: 0.560 | max_load: 0.138 | aux: 0.0112 | remaining: 4542s    
+step 00621 (4.4%) | loss: 3.121827 | lrm: 1.00 | dt: 336ms | tok/sec: 780,513 | mfu: 24.1% | epoch: 1 | router_ent: 1.516 | load_cv: 0.528 | max_load: 0.130 | aux: 0.0111 | remaining: 4542s    
+step 00622 (4.4%) | loss: 3.122246 | lrm: 1.00 | dt: 340ms | tok/sec: 770,849 | mfu: 23.8% | epoch: 1 | router_ent: 1.553 | load_cv: 0.543 | max_load: 0.138 | aux: 0.0111 | remaining: 4541s    
+step 00623 (4.4%) | loss: 3.120491 | lrm: 1.00 | dt: 338ms | tok/sec: 775,493 | mfu: 23.9% | epoch: 1 | router_ent: 1.519 | load_cv: 0.522 | max_load: 0.132 | aux: 0.0111 | remaining: 4541s    
+step 00624 (4.4%) | loss: 3.120786 | lrm: 1.00 | dt: 337ms | tok/sec: 776,930 | mfu: 24.0% | epoch: 1 | router_ent: 1.548 | load_cv: 0.541 | max_load: 0.135 | aux: 0.0111 | remaining: 4541s    
+step 00625 (4.4%) | loss: 3.122091 | lrm: 1.00 | dt: 339ms | tok/sec: 774,143 | mfu: 23.9% | epoch: 1 | router_ent: 1.538 | load_cv: 0.529 | max_load: 0.131 | aux: 0.0110 | remaining: 4540s    
+step 00626 (4.4%) | loss: 3.126106 | lrm: 1.00 | dt: 335ms | tok/sec: 781,660 | mfu: 24.1% | epoch: 1 | router_ent: 1.533 | load_cv: 0.537 | max_load: 0.133 | aux: 0.0111 | remaining: 4540s    
+step 00627 (4.4%) | loss: 3.126976 | lrm: 1.00 | dt: 336ms | tok/sec: 779,610 | mfu: 24.1% | epoch: 1 | router_ent: 1.550 | load_cv: 0.538 | max_load: 0.131 | aux: 0.0111 | remaining: 4540s    
+step 00628 (4.5%) | loss: 3.125146 | lrm: 1.00 | dt: 338ms | tok/sec: 774,770 | mfu: 23.9% | epoch: 1 | router_ent: 1.533 | load_cv: 0.536 | max_load: 0.136 | aux: 0.0111 | remaining: 4539s    
+step 00629 (4.5%) | loss: 3.123150 | lrm: 1.00 | dt: 338ms | tok/sec: 774,578 | mfu: 23.9% | epoch: 1 | router_ent: 1.542 | load_cv: 0.531 | max_load: 0.128 | aux: 0.0110 | remaining: 4539s    
+step 00630 (4.5%) | loss: 3.125535 | lrm: 1.00 | dt: 336ms | tok/sec: 779,642 | mfu: 24.1% | epoch: 1 | router_ent: 1.545 | load_cv: 0.534 | max_load: 0.133 | aux: 0.0111 | remaining: 4539s    
+step 00631 (4.5%) | loss: 3.120298 | lrm: 1.00 | dt: 342ms | tok/sec: 767,438 | mfu: 23.7% | epoch: 1 | router_ent: 1.532 | load_cv: 0.533 | max_load: 0.134 | aux: 0.0111 | remaining: 4538s    
+step 00632 (4.5%) | loss: 3.120219 | lrm: 1.00 | dt: 335ms | tok/sec: 783,686 | mfu: 24.2% | epoch: 1 | router_ent: 1.549 | load_cv: 0.519 | max_load: 0.135 | aux: 0.0109 | remaining: 4538s    
+step 00633 (4.5%) | loss: 3.119192 | lrm: 1.00 | dt: 337ms | tok/sec: 777,772 | mfu: 24.0% | epoch: 1 | router_ent: 1.550 | load_cv: 0.519 | max_load: 0.132 | aux: 0.0110 | remaining: 4538s    
+step 00634 (4.5%) | loss: 3.122319 | lrm: 1.00 | dt: 337ms | tok/sec: 777,396 | mfu: 24.0% | epoch: 1 | router_ent: 1.547 | load_cv: 0.516 | max_load: 0.137 | aux: 0.0110 | remaining: 4537s    
+step 00635 (4.5%) | loss: 3.117118 | lrm: 1.00 | dt: 336ms | tok/sec: 779,881 | mfu: 24.1% | epoch: 1 | router_ent: 1.557 | load_cv: 0.518 | max_load: 0.135 | aux: 0.0109 | remaining: 4537s    
+step 00636 (4.5%) | loss: 3.117655 | lrm: 1.00 | dt: 337ms | tok/sec: 777,038 | mfu: 24.0% | epoch: 1 | router_ent: 1.543 | load_cv: 0.515 | max_load: 0.139 | aux: 0.0110 | remaining: 4537s    
+step 00637 (4.5%) | loss: 3.111474 | lrm: 1.00 | dt: 339ms | tok/sec: 773,610 | mfu: 23.9% | epoch: 1 | router_ent: 1.554 | load_cv: 0.513 | max_load: 0.135 | aux: 0.0109 | remaining: 4536s    
+step 00638 (4.5%) | loss: 3.106766 | lrm: 1.00 | dt: 338ms | tok/sec: 776,086 | mfu: 24.0% | epoch: 1 | router_ent: 1.573 | load_cv: 0.505 | max_load: 0.133 | aux: 0.0108 | remaining: 4536s    
+step 00639 (4.5%) | loss: 3.108139 | lrm: 1.00 | dt: 340ms | tok/sec: 770,376 | mfu: 23.8% | epoch: 1 | router_ent: 1.546 | load_cv: 0.534 | max_load: 0.135 | aux: 0.0111 | remaining: 4536s    
+step 00640 (4.5%) | loss: 3.104686 | lrm: 1.00 | dt: 336ms | tok/sec: 780,517 | mfu: 24.1% | epoch: 1 | router_ent: 1.558 | load_cv: 0.530 | max_load: 0.137 | aux: 0.0110 | remaining: 4535s    
+step 00641 (4.5%) | loss: 3.104350 | lrm: 1.00 | dt: 337ms | tok/sec: 778,280 | mfu: 24.0% | epoch: 1 | router_ent: 1.549 | load_cv: 0.527 | max_load: 0.134 | aux: 0.0111 | remaining: 4535s    
+step 00642 (4.6%) | loss: 3.108325 | lrm: 1.00 | dt: 337ms | tok/sec: 778,934 | mfu: 24.0% | epoch: 1 | router_ent: 1.555 | load_cv: 0.513 | max_load: 0.134 | aux: 0.0110 | remaining: 4535s    
+step 00643 (4.6%) | loss: 3.110538 | lrm: 1.00 | dt: 336ms | tok/sec: 780,661 | mfu: 24.1% | epoch: 1 | router_ent: 1.550 | load_cv: 0.521 | max_load: 0.133 | aux: 0.0109 | remaining: 4534s    
+step 00644 (4.6%) | loss: 3.107352 | lrm: 1.00 | dt: 340ms | tok/sec: 772,053 | mfu: 23.8% | epoch: 1 | router_ent: 1.557 | load_cv: 0.528 | max_load: 0.133 | aux: 0.0110 | remaining: 4534s    
+step 00645 (4.6%) | loss: 3.111697 | lrm: 1.00 | dt: 336ms | tok/sec: 779,062 | mfu: 24.0% | epoch: 1 | router_ent: 1.537 | load_cv: 0.521 | max_load: 0.131 | aux: 0.0110 | remaining: 4534s    
+step 00646 (4.6%) | loss: 3.112443 | lrm: 1.00 | dt: 339ms | tok/sec: 772,387 | mfu: 23.8% | epoch: 1 | router_ent: 1.559 | load_cv: 0.546 | max_load: 0.138 | aux: 0.0111 | remaining: 4533s    
+step 00647 (4.6%) | loss: 3.116582 | lrm: 1.00 | dt: 338ms | tok/sec: 774,923 | mfu: 23.9% | epoch: 1 | router_ent: 1.532 | load_cv: 0.514 | max_load: 0.126 | aux: 0.0110 | remaining: 4533s    
+step 00648 (4.6%) | loss: 3.116744 | lrm: 1.00 | dt: 336ms | tok/sec: 779,481 | mfu: 24.1% | epoch: 1 | router_ent: 1.550 | load_cv: 0.534 | max_load: 0.135 | aux: 0.0111 | remaining: 4533s    
+step 00649 (4.6%) | loss: 3.116528 | lrm: 1.00 | dt: 337ms | tok/sec: 778,633 | mfu: 24.0% | epoch: 1 | router_ent: 1.526 | load_cv: 0.535 | max_load: 0.134 | aux: 0.0112 | remaining: 4532s    
+step 00650 (4.6%) | loss: 3.116875 | lrm: 1.00 | dt: 336ms | tok/sec: 779,673 | mfu: 24.1% | epoch: 1 | router_ent: 1.550 | load_cv: 0.519 | max_load: 0.132 | aux: 0.0110 | remaining: 4532s    
+step 00651 (4.6%) | loss: 3.111931 | lrm: 1.00 | dt: 338ms | tok/sec: 774,800 | mfu: 23.9% | epoch: 1 | router_ent: 1.519 | load_cv: 0.551 | max_load: 0.138 | aux: 0.0113 | remaining: 4532s    
+step 00652 (4.6%) | loss: 3.110159 | lrm: 1.00 | dt: 338ms | tok/sec: 775,912 | mfu: 23.9% | epoch: 1 | router_ent: 1.555 | load_cv: 0.518 | max_load: 0.128 | aux: 0.0109 | remaining: 4531s    
+--- gpu
+0, 95, 73, 49679, 81559, 683.98, 700.00
+1, 98, 61, 49679, 81559, 692.06, 700.00
+2, 96, 74, 49679, 81559, 680.34, 700.00
+3, 98, 62, 49679, 81559, 690.01, 700.00
+
+===== 2026-06-11T21:13:00+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:07:51 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:07:51 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        14:05 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        14:03 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        14:03 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        14:03 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        14:03 /opt/conda/bin/python3 -u train.py
+2198818 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 02380 (16.9%) | loss: 3.072797 | lrm: 0.94 | dt: 341ms | tok/sec: 769,347 | mfu: 23.7% | epoch: 1 | router_ent: 1.107 | load_cv: 1.018 | max_load: 0.216 | aux: 0.0221 | remaining: 3957s    
+step 02381 (16.9%) | loss: 3.054278 | lrm: 0.94 | dt: 339ms | tok/sec: 772,524 | mfu: 23.8% | epoch: 1 | router_ent: 1.118 | load_cv: 1.007 | max_load: 0.217 | aux: 0.0218 | remaining: 3957s    
+step 02382 (16.9%) | loss: 3.036683 | lrm: 0.94 | dt: 339ms | tok/sec: 772,924 | mfu: 23.9% | epoch: 1 | router_ent: 1.146 | load_cv: 0.967 | max_load: 0.203 | aux: 0.0206 | remaining: 3957s    
+step 02383 (16.9%) | loss: 3.015629 | lrm: 0.94 | dt: 341ms | tok/sec: 769,737 | mfu: 23.8% | epoch: 1 | router_ent: 1.131 | load_cv: 0.989 | max_load: 0.210 | aux: 0.0206 | remaining: 3956s    
+step 02384 (16.9%) | loss: 3.001334 | lrm: 0.94 | dt: 340ms | tok/sec: 770,319 | mfu: 23.8% | epoch: 1 | router_ent: 1.159 | load_cv: 0.951 | max_load: 0.198 | aux: 0.0196 | remaining: 3956s    
+step 02385 (16.9%) | loss: 2.990216 | lrm: 0.94 | dt: 343ms | tok/sec: 765,359 | mfu: 23.6% | epoch: 1 | router_ent: 1.158 | load_cv: 0.973 | max_load: 0.199 | aux: 0.0195 | remaining: 3956s    
+step 02386 (16.9%) | loss: 2.974704 | lrm: 0.94 | dt: 342ms | tok/sec: 765,981 | mfu: 23.6% | epoch: 1 | router_ent: 1.161 | load_cv: 0.946 | max_load: 0.195 | aux: 0.0189 | remaining: 3955s    
+step 02387 (16.9%) | loss: 2.964512 | lrm: 0.94 | dt: 340ms | tok/sec: 770,863 | mfu: 23.8% | epoch: 1 | router_ent: 1.179 | load_cv: 0.949 | max_load: 0.196 | aux: 0.0186 | remaining: 3955s    
+step 02388 (16.9%) | loss: 2.956440 | lrm: 0.94 | dt: 340ms | tok/sec: 770,890 | mfu: 23.8% | epoch: 1 | router_ent: 1.172 | load_cv: 0.922 | max_load: 0.190 | aux: 0.0179 | remaining: 3955s    
+step 02389 (16.9%) | loss: 2.946073 | lrm: 0.94 | dt: 337ms | tok/sec: 777,394 | mfu: 24.0% | epoch: 1 | router_ent: 1.203 | load_cv: 0.916 | max_load: 0.186 | aux: 0.0175 | remaining: 3954s    
+step 02390 (17.0%) | loss: 2.938766 | lrm: 0.94 | dt: 341ms | tok/sec: 768,746 | mfu: 23.7% | epoch: 1 | router_ent: 1.188 | load_cv: 0.898 | max_load: 0.184 | aux: 0.0171 | remaining: 3954s    
+step 02391 (17.0%) | loss: 2.933072 | lrm: 0.94 | dt: 339ms | tok/sec: 773,002 | mfu: 23.9% | epoch: 1 | router_ent: 1.195 | load_cv: 0.903 | max_load: 0.179 | aux: 0.0169 | remaining: 3954s    
+step 02392 (17.0%) | loss: 2.925696 | lrm: 0.94 | dt: 344ms | tok/sec: 763,062 | mfu: 23.5% | epoch: 1 | router_ent: 1.203 | load_cv: 0.886 | max_load: 0.180 | aux: 0.0166 | remaining: 3953s    
+step 02393 (17.0%) | loss: 2.917800 | lrm: 0.94 | dt: 342ms | tok/sec: 765,995 | mfu: 23.6% | epoch: 1 | router_ent: 1.188 | load_cv: 0.890 | max_load: 0.174 | aux: 0.0165 | remaining: 3953s    
+step 02394 (17.0%) | loss: 2.908789 | lrm: 0.94 | dt: 339ms | tok/sec: 773,986 | mfu: 23.9% | epoch: 1 | router_ent: 1.211 | load_cv: 0.873 | max_load: 0.169 | aux: 0.0163 | remaining: 3953s    
+step 02395 (17.0%) | loss: 2.904460 | lrm: 0.94 | dt: 338ms | tok/sec: 774,558 | mfu: 23.9% | epoch: 1 | router_ent: 1.203 | load_cv: 0.877 | max_load: 0.171 | aux: 0.0162 | remaining: 3952s    
+step 02396 (17.0%) | loss: 2.894718 | lrm: 0.94 | dt: 339ms | tok/sec: 772,744 | mfu: 23.8% | epoch: 1 | router_ent: 1.224 | load_cv: 0.855 | max_load: 0.168 | aux: 0.0159 | remaining: 3952s    
+step 02397 (17.0%) | loss: 2.884669 | lrm: 0.94 | dt: 340ms | tok/sec: 771,943 | mfu: 23.8% | epoch: 1 | router_ent: 1.222 | load_cv: 0.871 | max_load: 0.174 | aux: 0.0160 | remaining: 3952s    
+step 02398 (17.0%) | loss: 2.877652 | lrm: 0.94 | dt: 338ms | tok/sec: 774,438 | mfu: 23.9% | epoch: 1 | router_ent: 1.219 | load_cv: 0.852 | max_load: 0.168 | aux: 0.0158 | remaining: 3951s    
+step 02399 (17.0%) | loss: 2.872001 | lrm: 0.94 | dt: 343ms | tok/sec: 764,590 | mfu: 23.6% | epoch: 1 | router_ent: 1.242 | load_cv: 0.853 | max_load: 0.168 | aux: 0.0157 | remaining: 3951s    
+step 02400 (17.0%) | loss: 2.870157 | lrm: 0.94 | dt: 340ms | tok/sec: 771,082 | mfu: 23.8% | epoch: 1 | router_ent: 1.225 | load_cv: 0.850 | max_load: 0.170 | aux: 0.0158 | remaining: 3951s    
+step 02401 (17.0%) | loss: 2.863461 | lrm: 0.94 | dt: 338ms | tok/sec: 774,922 | mfu: 23.9% | epoch: 1 | router_ent: 1.258 | load_cv: 0.838 | max_load: 0.168 | aux: 0.0156 | remaining: 3950s    
+step 02402 (17.0%) | loss: 2.853957 | lrm: 0.94 | dt: 340ms | tok/sec: 770,395 | mfu: 23.8% | epoch: 1 | router_ent: 1.228 | load_cv: 0.858 | max_load: 0.171 | aux: 0.0159 | remaining: 3950s    
+step 02403 (17.0%) | loss: 2.855615 | lrm: 0.94 | dt: 338ms | tok/sec: 775,998 | mfu: 23.9% | epoch: 1 | router_ent: 1.240 | load_cv: 0.854 | max_load: 0.172 | aux: 0.0158 | remaining: 3950s    
+step 02404 (17.1%) | loss: 2.860835 | lrm: 0.94 | dt: 339ms | tok/sec: 773,566 | mfu: 23.9% | epoch: 1 | router_ent: 1.244 | load_cv: 0.846 | max_load: 0.167 | aux: 0.0157 | remaining: 3949s    
+step 02405 (17.1%) | loss: 2.858942 | lrm: 0.94 | dt: 340ms | tok/sec: 772,126 | mfu: 23.8% | epoch: 1 | router_ent: 1.236 | load_cv: 0.844 | max_load: 0.172 | aux: 0.0157 | remaining: 3949s    
+step 02406 (17.1%) | loss: 2.858356 | lrm: 0.94 | dt: 339ms | tok/sec: 772,347 | mfu: 23.8% | epoch: 1 | router_ent: 1.259 | load_cv: 0.842 | max_load: 0.161 | aux: 0.0156 | remaining: 3949s    
+step 02407 (17.1%) | loss: 2.857922 | lrm: 0.94 | dt: 338ms | tok/sec: 775,055 | mfu: 23.9% | epoch: 1 | router_ent: 1.256 | load_cv: 0.844 | max_load: 0.169 | aux: 0.0157 | remaining: 3948s    
+step 02408 (17.1%) | loss: 2.861636 | lrm: 0.94 | dt: 342ms | tok/sec: 766,115 | mfu: 23.6% | epoch: 1 | router_ent: 1.254 | load_cv: 0.855 | max_load: 0.167 | aux: 0.0157 | remaining: 3948s    
+step 02409 (17.1%) | loss: 2.856939 | lrm: 0.94 | dt: 342ms | tok/sec: 767,070 | mfu: 23.7% | epoch: 1 | router_ent: 1.281 | load_cv: 0.831 | max_load: 0.164 | aux: 0.0154 | remaining: 3948s    
+step 02410 (17.1%) | loss: 2.858878 | lrm: 0.94 | dt: 339ms | tok/sec: 772,308 | mfu: 23.8% | epoch: 1 | router_ent: 1.261 | load_cv: 0.849 | max_load: 0.167 | aux: 0.0157 | remaining: 3947s    
+step 02411 (17.1%) | loss: 2.859481 | lrm: 0.94 | dt: 342ms | tok/sec: 765,611 | mfu: 23.6% | epoch: 1 | router_ent: 1.288 | load_cv: 0.847 | max_load: 0.170 | aux: 0.0155 | remaining: 3947s    
+step 02412 (17.1%) | loss: 2.854256 | lrm: 0.94 | dt: 337ms | tok/sec: 776,842 | mfu: 24.0% | epoch: 1 | router_ent: 1.272 | load_cv: 0.834 | max_load: 0.164 | aux: 0.0154 | remaining: 3947s    
+step 02413 (17.1%) | loss: 2.849687 | lrm: 0.94 | dt: 339ms | tok/sec: 772,790 | mfu: 23.9% | epoch: 1 | router_ent: 1.287 | load_cv: 0.838 | max_load: 0.164 | aux: 0.0153 | remaining: 3946s    
+step 02414 (17.1%) | loss: 2.842368 | lrm: 0.94 | dt: 341ms | tok/sec: 769,058 | mfu: 23.7% | epoch: 1 | router_ent: 1.286 | load_cv: 0.823 | max_load: 0.161 | aux: 0.0152 | remaining: 3946s    
+--- gpu
+0, 100, 74, 49679, 81559, 694.91, 700.00
+1, 100, 62, 49679, 81559, 698.42, 700.00
+2, 97, 73, 49679, 81559, 696.70, 700.00
+3, 95, 63, 49679, 81559, 692.74, 700.00
+
+===== 2026-06-11T21:23:00+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:17:52 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:17:52 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        24:06 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        24:03 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        24:03 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        24:03 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        24:03 /opt/conda/bin/python3 -u train.py
+2248284 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 04136 (29.3%) | loss: 4.046797 | lrm: 0.83 | dt: 337ms | tok/sec: 776,801 | mfu: 24.0% | epoch: 1 | router_ent: 1.241 | load_cv: 0.810 | max_load: 0.167 | aux: 0.0182 | remaining: 3372s    
+step 04137 (29.3%) | loss: 4.012127 | lrm: 0.83 | dt: 339ms | tok/sec: 772,317 | mfu: 23.8% | epoch: 1 | router_ent: 1.238 | load_cv: 0.798 | max_load: 0.166 | aux: 0.0180 | remaining: 3371s    
+step 04138 (29.3%) | loss: 3.983065 | lrm: 0.83 | dt: 341ms | tok/sec: 769,729 | mfu: 23.8% | epoch: 1 | router_ent: 1.232 | load_cv: 0.808 | max_load: 0.170 | aux: 0.0185 | remaining: 3371s    
+step 04139 (29.4%) | loss: 3.946638 | lrm: 0.83 | dt: 337ms | tok/sec: 778,414 | mfu: 24.0% | epoch: 1 | router_ent: 1.237 | load_cv: 0.795 | max_load: 0.168 | aux: 0.0182 | remaining: 3371s    
+step 04140 (29.4%) | loss: 3.922439 | lrm: 0.83 | dt: 340ms | tok/sec: 771,597 | mfu: 23.8% | epoch: 1 | router_ent: 1.232 | load_cv: 0.803 | max_load: 0.169 | aux: 0.0185 | remaining: 3370s    
+step 04141 (29.4%) | loss: 3.896029 | lrm: 0.83 | dt: 338ms | tok/sec: 776,308 | mfu: 24.0% | epoch: 1 | router_ent: 1.234 | load_cv: 0.791 | max_load: 0.163 | aux: 0.0183 | remaining: 3370s    
+step 04142 (29.4%) | loss: 3.872141 | lrm: 0.83 | dt: 338ms | tok/sec: 775,000 | mfu: 23.9% | epoch: 1 | router_ent: 1.226 | load_cv: 0.793 | max_load: 0.164 | aux: 0.0185 | remaining: 3370s    
+step 04143 (29.4%) | loss: 3.850550 | lrm: 0.83 | dt: 337ms | tok/sec: 776,909 | mfu: 24.0% | epoch: 1 | router_ent: 1.211 | load_cv: 0.790 | max_load: 0.162 | aux: 0.0184 | remaining: 3369s    
+step 04144 (29.4%) | loss: 3.836965 | lrm: 0.83 | dt: 337ms | tok/sec: 778,151 | mfu: 24.0% | epoch: 1 | router_ent: 1.214 | load_cv: 0.793 | max_load: 0.162 | aux: 0.0188 | remaining: 3369s    
+step 04145 (29.4%) | loss: 3.820767 | lrm: 0.83 | dt: 336ms | tok/sec: 779,078 | mfu: 24.0% | epoch: 1 | router_ent: 1.191 | load_cv: 0.779 | max_load: 0.162 | aux: 0.0186 | remaining: 3369s    
+step 04146 (29.4%) | loss: 3.811421 | lrm: 0.83 | dt: 338ms | tok/sec: 775,118 | mfu: 23.9% | epoch: 1 | router_ent: 1.198 | load_cv: 0.787 | max_load: 0.162 | aux: 0.0191 | remaining: 3368s    
+step 04147 (29.4%) | loss: 3.795131 | lrm: 0.83 | dt: 340ms | tok/sec: 770,906 | mfu: 23.8% | epoch: 1 | router_ent: 1.184 | load_cv: 0.779 | max_load: 0.165 | aux: 0.0187 | remaining: 3368s    
+step 04148 (29.4%) | loss: 3.796934 | lrm: 0.83 | dt: 336ms | tok/sec: 779,037 | mfu: 24.0% | epoch: 1 | router_ent: 1.182 | load_cv: 0.783 | max_load: 0.161 | aux: 0.0192 | remaining: 3368s    
+step 04149 (29.4%) | loss: 3.786253 | lrm: 0.83 | dt: 336ms | tok/sec: 779,609 | mfu: 24.1% | epoch: 1 | router_ent: 1.179 | load_cv: 0.782 | max_load: 0.164 | aux: 0.0189 | remaining: 3367s    
+step 04150 (29.4%) | loss: 3.783164 | lrm: 0.83 | dt: 341ms | tok/sec: 768,220 | mfu: 23.7% | epoch: 1 | router_ent: 1.159 | load_cv: 0.777 | max_load: 0.163 | aux: 0.0194 | remaining: 3367s    
+step 04151 (29.4%) | loss: 3.767844 | lrm: 0.83 | dt: 337ms | tok/sec: 777,920 | mfu: 24.0% | epoch: 1 | router_ent: 1.165 | load_cv: 0.788 | max_load: 0.167 | aux: 0.0189 | remaining: 3367s    
+step 04152 (29.4%) | loss: 3.766576 | lrm: 0.83 | dt: 339ms | tok/sec: 773,513 | mfu: 23.9% | epoch: 1 | router_ent: 1.152 | load_cv: 0.773 | max_load: 0.161 | aux: 0.0192 | remaining: 3366s    
+step 04153 (29.5%) | loss: 3.760615 | lrm: 0.83 | dt: 341ms | tok/sec: 768,879 | mfu: 23.7% | epoch: 1 | router_ent: 1.160 | load_cv: 0.768 | max_load: 0.163 | aux: 0.0187 | remaining: 3366s    
+step 04154 (29.5%) | loss: 3.759146 | lrm: 0.83 | dt: 341ms | tok/sec: 769,364 | mfu: 23.7% | epoch: 1 | router_ent: 1.138 | load_cv: 0.786 | max_load: 0.166 | aux: 0.0193 | remaining: 3366s    
+step 04155 (29.5%) | loss: 3.776681 | lrm: 0.83 | dt: 338ms | tok/sec: 775,081 | mfu: 23.9% | epoch: 1 | router_ent: 1.135 | load_cv: 0.768 | max_load: 0.160 | aux: 0.0199 | remaining: 3365s    
+step 04156 (29.5%) | loss: 3.775926 | lrm: 0.83 | dt: 339ms | tok/sec: 774,249 | mfu: 23.9% | epoch: 1 | router_ent: 1.145 | load_cv: 0.768 | max_load: 0.166 | aux: 0.0191 | remaining: 3365s    
+step 04157 (29.5%) | loss: 3.795914 | lrm: 0.83 | dt: 343ms | tok/sec: 765,302 | mfu: 23.6% | epoch: 1 | router_ent: 1.128 | load_cv: 0.762 | max_load: 0.163 | aux: 0.0200 | remaining: 3365s    
+step 04158 (29.5%) | loss: 3.790425 | lrm: 0.83 | dt: 336ms | tok/sec: 779,984 | mfu: 24.1% | epoch: 1 | router_ent: 1.125 | load_cv: 0.775 | max_load: 0.167 | aux: 0.0190 | remaining: 3364s    
+step 04159 (29.5%) | loss: 3.798795 | lrm: 0.83 | dt: 338ms | tok/sec: 776,313 | mfu: 24.0% | epoch: 1 | router_ent: 1.135 | load_cv: 0.761 | max_load: 0.165 | aux: 0.0193 | remaining: 3364s    
+step 04160 (29.5%) | loss: 3.799945 | lrm: 0.83 | dt: 339ms | tok/sec: 773,091 | mfu: 23.9% | epoch: 1 | router_ent: 1.129 | load_cv: 0.770 | max_load: 0.163 | aux: 0.0192 | remaining: 3364s    
+step 04161 (29.5%) | loss: 3.801395 | lrm: 0.83 | dt: 339ms | tok/sec: 772,155 | mfu: 23.8% | epoch: 1 | router_ent: 1.126 | load_cv: 0.773 | max_load: 0.163 | aux: 0.0190 | remaining: 3363s    
+step 04162 (29.5%) | loss: 3.825845 | lrm: 0.83 | dt: 338ms | tok/sec: 776,288 | mfu: 24.0% | epoch: 1 | router_ent: 1.128 | load_cv: 0.779 | max_load: 0.164 | aux: 0.0196 | remaining: 3363s    
+step 04163 (29.5%) | loss: 3.826107 | lrm: 0.83 | dt: 337ms | tok/sec: 777,160 | mfu: 24.0% | epoch: 1 | router_ent: 1.125 | load_cv: 0.755 | max_load: 0.164 | aux: 0.0184 | remaining: 3363s    
+step 04164 (29.5%) | loss: 3.849006 | lrm: 0.83 | dt: 337ms | tok/sec: 776,805 | mfu: 24.0% | epoch: 1 | router_ent: 1.137 | load_cv: 0.756 | max_load: 0.164 | aux: 0.0191 | remaining: 3362s    
+step 04165 (29.5%) | loss: 3.846180 | lrm: 0.83 | dt: 337ms | tok/sec: 778,089 | mfu: 24.0% | epoch: 1 | router_ent: 1.127 | load_cv: 0.742 | max_load: 0.162 | aux: 0.0181 | remaining: 3362s    
+step 04166 (29.5%) | loss: 3.873784 | lrm: 0.83 | dt: 339ms | tok/sec: 774,283 | mfu: 23.9% | epoch: 1 | router_ent: 1.147 | load_cv: 0.760 | max_load: 0.165 | aux: 0.0189 | remaining: 3361s    
+step 04167 (29.6%) | loss: 3.868952 | lrm: 0.83 | dt: 338ms | tok/sec: 776,449 | mfu: 24.0% | epoch: 1 | router_ent: 1.146 | load_cv: 0.732 | max_load: 0.157 | aux: 0.0175 | remaining: 3361s    
+step 04168 (29.6%) | loss: 3.880396 | lrm: 0.83 | dt: 336ms | tok/sec: 779,473 | mfu: 24.1% | epoch: 1 | router_ent: 1.158 | load_cv: 0.740 | max_load: 0.160 | aux: 0.0178 | remaining: 3361s    
+step 04169 (29.6%) | loss: 3.871435 | lrm: 0.83 | dt: 341ms | tok/sec: 767,853 | mfu: 23.7% | epoch: 1 | router_ent: 1.150 | load_cv: 0.744 | max_load: 0.159 | aux: 0.0174 | remaining: 3360s    
+step 04170 (29.6%) | loss: 3.876835 | lrm: 0.82 | dt: 336ms | tok/sec: 780,255 | mfu: 24.1% | epoch: 1 | router_ent: 1.149 | load_cv: 0.743 | max_load: 0.158 | aux: 0.0174 | remaining: 3360s    
+--- gpu
+0, 100, 73, 49679, 81559, 696.24, 700.00
+1, 99, 62, 49679, 81559, 695.29, 700.00
+2, 96, 75, 49679, 81559, 694.93, 700.00
+3, 97, 63, 49679, 81559, 686.19, 700.00
+
+===== 2026-06-11T21:33:00+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:27:52 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:27:52 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        34:06 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        34:03 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        34:03 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        34:03 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        34:03 /opt/conda/bin/python3 -u train.py
+2297247 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 05883 (41.7%) | loss: 2.717862 | lrm: 0.67 | dt: 337ms | tok/sec: 777,301 | mfu: 24.0% | epoch: 1 | router_ent: 1.412 | load_cv: 0.858 | max_load: 0.164 | aux: 0.0153 | remaining: 2786s    
+step 05884 (41.7%) | loss: 2.715248 | lrm: 0.67 | dt: 340ms | tok/sec: 771,666 | mfu: 23.8% | epoch: 1 | router_ent: 1.407 | load_cv: 0.875 | max_load: 0.166 | aux: 0.0156 | remaining: 2786s    
+step 05885 (41.7%) | loss: 2.722663 | lrm: 0.67 | dt: 338ms | tok/sec: 775,827 | mfu: 23.9% | epoch: 1 | router_ent: 1.402 | load_cv: 0.855 | max_load: 0.160 | aux: 0.0153 | remaining: 2785s    
+step 05886 (41.7%) | loss: 2.728686 | lrm: 0.67 | dt: 341ms | tok/sec: 769,480 | mfu: 23.7% | epoch: 1 | router_ent: 1.394 | load_cv: 0.894 | max_load: 0.178 | aux: 0.0156 | remaining: 2785s    
+step 05887 (41.8%) | loss: 2.731066 | lrm: 0.67 | dt: 340ms | tok/sec: 770,198 | mfu: 23.8% | epoch: 1 | router_ent: 1.392 | load_cv: 0.863 | max_load: 0.166 | aux: 0.0154 | remaining: 2785s    
+step 05888 (41.8%) | loss: 2.736607 | lrm: 0.67 | dt: 342ms | tok/sec: 767,010 | mfu: 23.7% | epoch: 1 | router_ent: 1.390 | load_cv: 0.854 | max_load: 0.162 | aux: 0.0154 | remaining: 2784s    
+step 05889 (41.8%) | loss: 2.739167 | lrm: 0.67 | dt: 341ms | tok/sec: 768,015 | mfu: 23.7% | epoch: 1 | router_ent: 1.395 | load_cv: 0.859 | max_load: 0.164 | aux: 0.0154 | remaining: 2784s    
+step 05890 (41.8%) | loss: 2.732451 | lrm: 0.67 | dt: 340ms | tok/sec: 771,610 | mfu: 23.8% | epoch: 1 | router_ent: 1.400 | load_cv: 0.880 | max_load: 0.169 | aux: 0.0155 | remaining: 2784s    
+step 05891 (41.8%) | loss: 2.733237 | lrm: 0.67 | dt: 338ms | tok/sec: 775,706 | mfu: 23.9% | epoch: 1 | router_ent: 1.394 | load_cv: 0.880 | max_load: 0.166 | aux: 0.0157 | remaining: 2783s    
+step 05892 (41.8%) | loss: 2.724980 | lrm: 0.67 | dt: 337ms | tok/sec: 777,739 | mfu: 24.0% | epoch: 1 | router_ent: 1.408 | load_cv: 0.878 | max_load: 0.165 | aux: 0.0156 | remaining: 2783s    
+step 05893 (41.8%) | loss: 2.719264 | lrm: 0.67 | dt: 340ms | tok/sec: 769,896 | mfu: 23.8% | epoch: 1 | router_ent: 1.399 | load_cv: 0.882 | max_load: 0.169 | aux: 0.0156 | remaining: 2783s    
+step 05894 (41.8%) | loss: 2.715005 | lrm: 0.67 | dt: 343ms | tok/sec: 765,184 | mfu: 23.6% | epoch: 1 | router_ent: 1.401 | load_cv: 0.880 | max_load: 0.167 | aux: 0.0157 | remaining: 2782s    
+step 05895 (41.8%) | loss: 2.715431 | lrm: 0.67 | dt: 342ms | tok/sec: 765,689 | mfu: 23.6% | epoch: 1 | router_ent: 1.407 | load_cv: 0.869 | max_load: 0.165 | aux: 0.0156 | remaining: 2782s    
+step 05896 (41.8%) | loss: 2.707886 | lrm: 0.67 | dt: 342ms | tok/sec: 766,279 | mfu: 23.6% | epoch: 1 | router_ent: 1.400 | load_cv: 0.891 | max_load: 0.170 | aux: 0.0157 | remaining: 2782s    
+step 05897 (41.8%) | loss: 2.711578 | lrm: 0.67 | dt: 338ms | tok/sec: 776,369 | mfu: 24.0% | epoch: 1 | router_ent: 1.416 | load_cv: 0.875 | max_load: 0.162 | aux: 0.0156 | remaining: 2781s    
+step 05898 (41.8%) | loss: 2.710150 | lrm: 0.67 | dt: 341ms | tok/sec: 768,162 | mfu: 23.7% | epoch: 1 | router_ent: 1.402 | load_cv: 0.876 | max_load: 0.171 | aux: 0.0156 | remaining: 2781s    
+step 05899 (41.8%) | loss: 2.710124 | lrm: 0.67 | dt: 339ms | tok/sec: 773,374 | mfu: 23.9% | epoch: 1 | router_ent: 1.401 | load_cv: 0.884 | max_load: 0.167 | aux: 0.0158 | remaining: 2781s    
+step 05900 (41.8%) | loss: 2.714166 | lrm: 0.67 | dt: 342ms | tok/sec: 767,380 | mfu: 23.7% | epoch: 1 | router_ent: 1.404 | load_cv: 0.876 | max_load: 0.167 | aux: 0.0156 | remaining: 2780s    
+step 05901 (41.9%) | loss: 2.712323 | lrm: 0.67 | dt: 343ms | tok/sec: 764,985 | mfu: 23.6% | epoch: 1 | router_ent: 1.392 | load_cv: 0.883 | max_load: 0.167 | aux: 0.0158 | remaining: 2780s    
+step 05902 (41.9%) | loss: 2.711290 | lrm: 0.67 | dt: 340ms | tok/sec: 771,583 | mfu: 23.8% | epoch: 1 | router_ent: 1.406 | load_cv: 0.871 | max_load: 0.160 | aux: 0.0156 | remaining: 2780s    
+step 05903 (41.9%) | loss: 2.706907 | lrm: 0.67 | dt: 342ms | tok/sec: 765,720 | mfu: 23.6% | epoch: 1 | router_ent: 1.388 | load_cv: 0.884 | max_load: 0.164 | aux: 0.0158 | remaining: 2779s    
+step 05904 (41.9%) | loss: 2.704138 | lrm: 0.67 | dt: 338ms | tok/sec: 775,010 | mfu: 23.9% | epoch: 1 | router_ent: 1.405 | load_cv: 0.893 | max_load: 0.171 | aux: 0.0157 | remaining: 2779s    
+step 05905 (41.9%) | loss: 2.704175 | lrm: 0.67 | dt: 340ms | tok/sec: 770,867 | mfu: 23.8% | epoch: 1 | router_ent: 1.391 | load_cv: 0.882 | max_load: 0.164 | aux: 0.0158 | remaining: 2778s    
+step 05906 (41.9%) | loss: 2.708145 | lrm: 0.67 | dt: 342ms | tok/sec: 767,455 | mfu: 23.7% | epoch: 1 | router_ent: 1.411 | load_cv: 0.883 | max_load: 0.169 | aux: 0.0157 | remaining: 2778s    
+step 05907 (41.9%) | loss: 2.708560 | lrm: 0.67 | dt: 342ms | tok/sec: 766,418 | mfu: 23.7% | epoch: 1 | router_ent: 1.393 | load_cv: 0.891 | max_load: 0.169 | aux: 0.0158 | remaining: 2778s    
+step 05908 (41.9%) | loss: 2.704627 | lrm: 0.67 | dt: 341ms | tok/sec: 768,766 | mfu: 23.7% | epoch: 1 | router_ent: 1.405 | load_cv: 0.881 | max_load: 0.169 | aux: 0.0157 | remaining: 2777s    
+step 05909 (41.9%) | loss: 2.706739 | lrm: 0.67 | dt: 341ms | tok/sec: 768,887 | mfu: 23.7% | epoch: 1 | router_ent: 1.405 | load_cv: 0.885 | max_load: 0.168 | aux: 0.0159 | remaining: 2777s    
+step 05910 (41.9%) | loss: 2.706699 | lrm: 0.67 | dt: 339ms | tok/sec: 773,336 | mfu: 23.9% | epoch: 1 | router_ent: 1.415 | load_cv: 0.890 | max_load: 0.172 | aux: 0.0157 | remaining: 2777s    
+step 05911 (41.9%) | loss: 2.708911 | lrm: 0.67 | dt: 337ms | tok/sec: 778,047 | mfu: 24.0% | epoch: 1 | router_ent: 1.408 | load_cv: 0.883 | max_load: 0.171 | aux: 0.0159 | remaining: 2776s    
+step 05912 (41.9%) | loss: 2.707954 | lrm: 0.67 | dt: 340ms | tok/sec: 770,557 | mfu: 23.8% | epoch: 1 | router_ent: 1.416 | load_cv: 0.886 | max_load: 0.168 | aux: 0.0158 | remaining: 2776s    
+step 05913 (41.9%) | loss: 2.709814 | lrm: 0.67 | dt: 342ms | tok/sec: 767,013 | mfu: 23.7% | epoch: 1 | router_ent: 1.428 | load_cv: 0.877 | max_load: 0.170 | aux: 0.0158 | remaining: 2776s    
+step 05914 (41.9%) | loss: 2.710978 | lrm: 0.67 | dt: 340ms | tok/sec: 770,986 | mfu: 23.8% | epoch: 1 | router_ent: 1.419 | load_cv: 0.875 | max_load: 0.167 | aux: 0.0158 | remaining: 2775s    
+step 05915 (42.0%) | loss: 2.708459 | lrm: 0.67 | dt: 342ms | tok/sec: 766,997 | mfu: 23.7% | epoch: 1 | router_ent: 1.414 | load_cv: 0.874 | max_load: 0.165 | aux: 0.0158 | remaining: 2775s    
+step 05916 (42.0%) | loss: 2.716282 | lrm: 0.67 | dt: 343ms | tok/sec: 765,027 | mfu: 23.6% | epoch: 1 | router_ent: 1.418 | load_cv: 0.871 | max_load: 0.169 | aux: 0.0159 | remaining: 2775s    
+step 05917 (42.0%) | loss: 2.724616 | lrm: 0.67 | dt: 340ms | tok/sec: 771,794 | mfu: 23.8% | epoch: 1 | router_ent: 1.411 | load_cv: 0.872 | max_load: 0.166 | aux: 0.0160 | remaining: 2774s    
+--- gpu
+0, 95, 73, 49679, 81559, 693.12, 700.00
+1, 100, 62, 49679, 81559, 693.68, 700.00
+2, 100, 74, 49679, 81559, 696.22, 700.00
+3, 100, 64, 49679, 81559, 682.31, 700.00
+
+===== 2026-06-11T21:43:00+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:37:52 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:37:52 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        44:06 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        44:03 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        44:03 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        44:03 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        44:03 /opt/conda/bin/python3 -u train.py
+2346334 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 07633 (54.1%) | loss: 2.605326 | lrm: 0.50 | dt: 338ms | tok/sec: 774,904 | mfu: 23.9% | epoch: 1 | router_ent: 1.601 | load_cv: 0.700 | max_load: 0.146 | aux: 0.0123 | remaining: 2194s    
+step 07634 (54.1%) | loss: 2.608026 | lrm: 0.50 | dt: 339ms | tok/sec: 772,951 | mfu: 23.9% | epoch: 1 | router_ent: 1.603 | load_cv: 0.696 | max_load: 0.145 | aux: 0.0123 | remaining: 2194s    
+step 07635 (54.2%) | loss: 2.604922 | lrm: 0.50 | dt: 336ms | tok/sec: 780,648 | mfu: 24.1% | epoch: 1 | router_ent: 1.612 | load_cv: 0.697 | max_load: 0.145 | aux: 0.0123 | remaining: 2194s    
+step 07636 (54.2%) | loss: 2.609598 | lrm: 0.50 | dt: 338ms | tok/sec: 775,410 | mfu: 23.9% | epoch: 1 | router_ent: 1.612 | load_cv: 0.684 | max_load: 0.144 | aux: 0.0122 | remaining: 2193s    
+step 07637 (54.2%) | loss: 2.613543 | lrm: 0.50 | dt: 337ms | tok/sec: 777,279 | mfu: 24.0% | epoch: 1 | router_ent: 1.609 | load_cv: 0.698 | max_load: 0.147 | aux: 0.0123 | remaining: 2193s    
+step 07638 (54.2%) | loss: 2.614182 | lrm: 0.50 | dt: 338ms | tok/sec: 775,138 | mfu: 23.9% | epoch: 1 | router_ent: 1.602 | load_cv: 0.701 | max_load: 0.147 | aux: 0.0123 | remaining: 2193s    
+step 07639 (54.2%) | loss: 2.609597 | lrm: 0.50 | dt: 340ms | tok/sec: 771,097 | mfu: 23.8% | epoch: 1 | router_ent: 1.609 | load_cv: 0.694 | max_load: 0.147 | aux: 0.0123 | remaining: 2192s    
+step 07640 (54.2%) | loss: 2.614761 | lrm: 0.50 | dt: 337ms | tok/sec: 777,381 | mfu: 24.0% | epoch: 1 | router_ent: 1.606 | load_cv: 0.697 | max_load: 0.147 | aux: 0.0122 | remaining: 2192s    
+step 07641 (54.2%) | loss: 2.619112 | lrm: 0.50 | dt: 339ms | tok/sec: 774,287 | mfu: 23.9% | epoch: 1 | router_ent: 1.611 | load_cv: 0.702 | max_load: 0.146 | aux: 0.0123 | remaining: 2192s    
+step 07642 (54.2%) | loss: 2.619506 | lrm: 0.50 | dt: 339ms | tok/sec: 772,612 | mfu: 23.8% | epoch: 1 | router_ent: 1.604 | load_cv: 0.694 | max_load: 0.143 | aux: 0.0123 | remaining: 2191s    
+step 07643 (54.2%) | loss: 2.626758 | lrm: 0.50 | dt: 340ms | tok/sec: 770,984 | mfu: 23.8% | epoch: 1 | router_ent: 1.606 | load_cv: 0.694 | max_load: 0.145 | aux: 0.0123 | remaining: 2191s    
+step 07644 (54.2%) | loss: 2.626760 | lrm: 0.50 | dt: 340ms | tok/sec: 771,848 | mfu: 23.8% | epoch: 1 | router_ent: 1.609 | load_cv: 0.708 | max_load: 0.148 | aux: 0.0123 | remaining: 2191s    
+step 07645 (54.2%) | loss: 2.623564 | lrm: 0.50 | dt: 339ms | tok/sec: 772,216 | mfu: 23.8% | epoch: 1 | router_ent: 1.602 | load_cv: 0.709 | max_load: 0.147 | aux: 0.0124 | remaining: 2190s    
+step 07646 (54.2%) | loss: 2.616448 | lrm: 0.49 | dt: 340ms | tok/sec: 770,039 | mfu: 23.8% | epoch: 1 | router_ent: 1.611 | load_cv: 0.701 | max_load: 0.146 | aux: 0.0123 | remaining: 2190s    
+step 07647 (54.2%) | loss: 2.622388 | lrm: 0.49 | dt: 339ms | tok/sec: 772,490 | mfu: 23.8% | epoch: 1 | router_ent: 1.599 | load_cv: 0.706 | max_load: 0.148 | aux: 0.0124 | remaining: 2190s    
+step 07648 (54.2%) | loss: 2.621473 | lrm: 0.49 | dt: 340ms | tok/sec: 771,068 | mfu: 23.8% | epoch: 1 | router_ent: 1.605 | load_cv: 0.704 | max_load: 0.145 | aux: 0.0123 | remaining: 2189s    
+step 07649 (54.3%) | loss: 2.616694 | lrm: 0.49 | dt: 337ms | tok/sec: 778,580 | mfu: 24.0% | epoch: 1 | router_ent: 1.596 | load_cv: 0.703 | max_load: 0.145 | aux: 0.0124 | remaining: 2189s    
+step 07650 (54.3%) | loss: 2.617859 | lrm: 0.49 | dt: 337ms | tok/sec: 777,636 | mfu: 24.0% | epoch: 1 | router_ent: 1.611 | load_cv: 0.699 | max_load: 0.151 | aux: 0.0122 | remaining: 2189s    
+step 07651 (54.3%) | loss: 2.615797 | lrm: 0.49 | dt: 337ms | tok/sec: 778,357 | mfu: 24.0% | epoch: 1 | router_ent: 1.601 | load_cv: 0.689 | max_load: 0.144 | aux: 0.0122 | remaining: 2188s    
+step 07652 (54.3%) | loss: 2.614132 | lrm: 0.49 | dt: 338ms | tok/sec: 775,953 | mfu: 23.9% | epoch: 1 | router_ent: 1.605 | load_cv: 0.686 | max_load: 0.145 | aux: 0.0122 | remaining: 2188s    
+step 07653 (54.3%) | loss: 2.611405 | lrm: 0.49 | dt: 339ms | tok/sec: 772,505 | mfu: 23.8% | epoch: 1 | router_ent: 1.604 | load_cv: 0.700 | max_load: 0.146 | aux: 0.0123 | remaining: 2188s    
+step 07654 (54.3%) | loss: 2.611323 | lrm: 0.49 | dt: 337ms | tok/sec: 778,739 | mfu: 24.0% | epoch: 1 | router_ent: 1.614 | load_cv: 0.697 | max_load: 0.147 | aux: 0.0122 | remaining: 2187s    
+step 07655 (54.3%) | loss: 2.613603 | lrm: 0.49 | dt: 339ms | tok/sec: 773,897 | mfu: 23.9% | epoch: 1 | router_ent: 1.609 | load_cv: 0.702 | max_load: 0.151 | aux: 0.0123 | remaining: 2187s    
+step 07656 (54.3%) | loss: 2.610474 | lrm: 0.49 | dt: 339ms | tok/sec: 773,977 | mfu: 23.9% | epoch: 1 | router_ent: 1.612 | load_cv: 0.706 | max_load: 0.152 | aux: 0.0123 | remaining: 2187s    
+step 07657 (54.3%) | loss: 2.606599 | lrm: 0.49 | dt: 337ms | tok/sec: 777,482 | mfu: 24.0% | epoch: 1 | router_ent: 1.608 | load_cv: 0.696 | max_load: 0.144 | aux: 0.0122 | remaining: 2186s    
+step 07658 (54.3%) | loss: 2.603548 | lrm: 0.49 | dt: 339ms | tok/sec: 772,255 | mfu: 23.8% | epoch: 1 | router_ent: 1.612 | load_cv: 0.700 | max_load: 0.149 | aux: 0.0123 | remaining: 2186s    
+step 07659 (54.3%) | loss: 2.601005 | lrm: 0.49 | dt: 338ms | tok/sec: 776,520 | mfu: 24.0% | epoch: 1 | router_ent: 1.609 | load_cv: 0.692 | max_load: 0.147 | aux: 0.0123 | remaining: 2186s    
+step 07660 (54.3%) | loss: 2.603810 | lrm: 0.49 | dt: 340ms | tok/sec: 771,369 | mfu: 23.8% | epoch: 1 | router_ent: 1.603 | load_cv: 0.695 | max_load: 0.146 | aux: 0.0123 | remaining: 2185s    
+step 07661 (54.3%) | loss: 2.606852 | lrm: 0.49 | dt: 339ms | tok/sec: 773,867 | mfu: 23.9% | epoch: 1 | router_ent: 1.599 | load_cv: 0.703 | max_load: 0.151 | aux: 0.0123 | remaining: 2185s    
+step 07662 (54.3%) | loss: 2.605435 | lrm: 0.49 | dt: 338ms | tok/sec: 776,020 | mfu: 23.9% | epoch: 1 | router_ent: 1.612 | load_cv: 0.692 | max_load: 0.145 | aux: 0.0122 | remaining: 2185s    
+step 07663 (54.4%) | loss: 2.605987 | lrm: 0.49 | dt: 345ms | tok/sec: 760,406 | mfu: 23.5% | epoch: 1 | router_ent: 1.619 | load_cv: 0.695 | max_load: 0.147 | aux: 0.0122 | remaining: 2184s    
+step 07664 (54.4%) | loss: 2.599570 | lrm: 0.49 | dt: 338ms | tok/sec: 776,430 | mfu: 24.0% | epoch: 1 | router_ent: 1.615 | load_cv: 0.697 | max_load: 0.148 | aux: 0.0122 | remaining: 2184s    
+step 07665 (54.4%) | loss: 2.603403 | lrm: 0.49 | dt: 338ms | tok/sec: 774,993 | mfu: 23.9% | epoch: 1 | router_ent: 1.610 | load_cv: 0.697 | max_load: 0.145 | aux: 0.0123 | remaining: 2183s    
+step 07666 (54.4%) | loss: 2.602779 | lrm: 0.49 | dt: 339ms | tok/sec: 773,503 | mfu: 23.9% | epoch: 1 | router_ent: 1.614 | load_cv: 0.695 | max_load: 0.145 | aux: 0.0123 | remaining: 2183s    
+step 07667 (54.4%) | loss: 2.602961 | lrm: 0.49 | dt: 337ms | tok/sec: 777,916 | mfu: 24.0% | epoch: 1 | router_ent: 1.620 | load_cv: 0.684 | max_load: 0.142 | aux: 0.0121 | remaining: 2183s    
+--- gpu
+0, 96, 74, 49679, 81559, 692.64, 700.00
+1, 98, 62, 49679, 81559, 690.29, 700.00
+2, 97, 74, 49679, 81559, 695.23, 700.00
+3, 95, 61, 49679, 81559, 686.51, 700.00
+
+===== 2026-06-11T21:53:01+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:47:52 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:47:52 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+        54:06 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl        54:03 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl        54:03 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl        54:03 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl        54:03 /opt/conda/bin/python3 -u train.py
+2395610 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 09393 (66.6%) | loss: 2.532874 | lrm: 0.33 | dt: 337ms | tok/sec: 777,267 | mfu: 24.0% | epoch: 1 | router_ent: 1.726 | load_cv: 0.611 | max_load: 0.145 | aux: 0.0112 | remaining: 1596s    
+step 09394 (66.6%) | loss: 2.531238 | lrm: 0.33 | dt: 341ms | tok/sec: 769,314 | mfu: 23.7% | epoch: 1 | router_ent: 1.727 | load_cv: 0.600 | max_load: 0.142 | aux: 0.0111 | remaining: 1596s    
+step 09395 (66.6%) | loss: 2.529557 | lrm: 0.33 | dt: 340ms | tok/sec: 770,524 | mfu: 23.8% | epoch: 1 | router_ent: 1.718 | load_cv: 0.610 | max_load: 0.144 | aux: 0.0112 | remaining: 1596s    
+step 09396 (66.6%) | loss: 2.528403 | lrm: 0.33 | dt: 341ms | tok/sec: 768,781 | mfu: 23.7% | epoch: 1 | router_ent: 1.711 | load_cv: 0.605 | max_load: 0.143 | aux: 0.0112 | remaining: 1595s    
+step 09397 (66.7%) | loss: 2.534159 | lrm: 0.33 | dt: 338ms | tok/sec: 776,060 | mfu: 24.0% | epoch: 1 | router_ent: 1.715 | load_cv: 0.606 | max_load: 0.142 | aux: 0.0112 | remaining: 1595s    
+step 09398 (66.7%) | loss: 2.527015 | lrm: 0.33 | dt: 337ms | tok/sec: 777,908 | mfu: 24.0% | epoch: 1 | router_ent: 1.717 | load_cv: 0.624 | max_load: 0.144 | aux: 0.0113 | remaining: 1594s    
+step 09399 (66.7%) | loss: 2.522658 | lrm: 0.33 | dt: 340ms | tok/sec: 772,112 | mfu: 23.8% | epoch: 1 | router_ent: 1.717 | load_cv: 0.608 | max_load: 0.142 | aux: 0.0112 | remaining: 1594s    
+step 09400 (66.7%) | loss: 2.524660 | lrm: 0.33 | dt: 336ms | tok/sec: 780,589 | mfu: 24.1% | epoch: 1 | router_ent: 1.724 | load_cv: 0.604 | max_load: 0.139 | aux: 0.0112 | remaining: 1594s    
+step 09401 (66.7%) | loss: 2.526959 | lrm: 0.33 | dt: 339ms | tok/sec: 773,915 | mfu: 23.9% | epoch: 1 | router_ent: 1.729 | load_cv: 0.597 | max_load: 0.140 | aux: 0.0111 | remaining: 1593s    
+step 09402 (66.7%) | loss: 2.524765 | lrm: 0.33 | dt: 339ms | tok/sec: 774,194 | mfu: 23.9% | epoch: 1 | router_ent: 1.736 | load_cv: 0.599 | max_load: 0.139 | aux: 0.0111 | remaining: 1593s    
+step 09403 (66.7%) | loss: 2.529290 | lrm: 0.33 | dt: 338ms | tok/sec: 774,975 | mfu: 23.9% | epoch: 1 | router_ent: 1.725 | load_cv: 0.590 | max_load: 0.139 | aux: 0.0110 | remaining: 1593s    
+step 09404 (66.7%) | loss: 2.532025 | lrm: 0.33 | dt: 339ms | tok/sec: 772,324 | mfu: 23.8% | epoch: 1 | router_ent: 1.720 | load_cv: 0.601 | max_load: 0.142 | aux: 0.0111 | remaining: 1592s    
+step 09405 (66.7%) | loss: 2.531077 | lrm: 0.33 | dt: 336ms | tok/sec: 780,253 | mfu: 24.1% | epoch: 1 | router_ent: 1.723 | load_cv: 0.597 | max_load: 0.142 | aux: 0.0111 | remaining: 1592s    
+step 09406 (66.7%) | loss: 2.530388 | lrm: 0.33 | dt: 339ms | tok/sec: 773,222 | mfu: 23.9% | epoch: 1 | router_ent: 1.723 | load_cv: 0.593 | max_load: 0.141 | aux: 0.0111 | remaining: 1592s    
+step 09407 (66.7%) | loss: 2.529639 | lrm: 0.33 | dt: 336ms | tok/sec: 780,329 | mfu: 24.1% | epoch: 1 | router_ent: 1.720 | load_cv: 0.600 | max_load: 0.141 | aux: 0.0112 | remaining: 1591s    
+step 09408 (66.7%) | loss: 2.532341 | lrm: 0.33 | dt: 338ms | tok/sec: 775,181 | mfu: 23.9% | epoch: 1 | router_ent: 1.721 | load_cv: 0.597 | max_load: 0.143 | aux: 0.0111 | remaining: 1591s    
+step 09409 (66.7%) | loss: 2.527808 | lrm: 0.33 | dt: 337ms | tok/sec: 778,515 | mfu: 24.0% | epoch: 1 | router_ent: 1.726 | load_cv: 0.594 | max_load: 0.140 | aux: 0.0111 | remaining: 1591s    
+step 09410 (66.7%) | loss: 2.531734 | lrm: 0.33 | dt: 336ms | tok/sec: 780,941 | mfu: 24.1% | epoch: 1 | router_ent: 1.726 | load_cv: 0.592 | max_load: 0.138 | aux: 0.0111 | remaining: 1590s    
+step 09411 (66.7%) | loss: 2.534419 | lrm: 0.33 | dt: 340ms | tok/sec: 771,849 | mfu: 23.8% | epoch: 1 | router_ent: 1.718 | load_cv: 0.593 | max_load: 0.138 | aux: 0.0111 | remaining: 1590s    
+step 09412 (66.8%) | loss: 2.537026 | lrm: 0.33 | dt: 337ms | tok/sec: 777,851 | mfu: 24.0% | epoch: 1 | router_ent: 1.714 | load_cv: 0.611 | max_load: 0.143 | aux: 0.0112 | remaining: 1590s    
+step 09413 (66.8%) | loss: 2.535864 | lrm: 0.33 | dt: 336ms | tok/sec: 779,045 | mfu: 24.0% | epoch: 1 | router_ent: 1.718 | load_cv: 0.601 | max_load: 0.139 | aux: 0.0111 | remaining: 1589s    
+step 09414 (66.8%) | loss: 2.536993 | lrm: 0.33 | dt: 338ms | tok/sec: 776,629 | mfu: 24.0% | epoch: 1 | router_ent: 1.721 | load_cv: 0.604 | max_load: 0.141 | aux: 0.0111 | remaining: 1589s    
+step 09415 (66.8%) | loss: 2.536781 | lrm: 0.33 | dt: 337ms | tok/sec: 777,699 | mfu: 24.0% | epoch: 1 | router_ent: 1.715 | load_cv: 0.611 | max_load: 0.143 | aux: 0.0112 | remaining: 1589s    
+step 09416 (66.8%) | loss: 2.535512 | lrm: 0.33 | dt: 338ms | tok/sec: 775,095 | mfu: 23.9% | epoch: 1 | router_ent: 1.719 | load_cv: 0.608 | max_load: 0.142 | aux: 0.0112 | remaining: 1588s    
+step 09417 (66.8%) | loss: 2.533184 | lrm: 0.33 | dt: 337ms | tok/sec: 777,602 | mfu: 24.0% | epoch: 1 | router_ent: 1.723 | load_cv: 0.595 | max_load: 0.142 | aux: 0.0111 | remaining: 1588s    
+step 09418 (66.8%) | loss: 2.534856 | lrm: 0.33 | dt: 339ms | tok/sec: 774,321 | mfu: 23.9% | epoch: 1 | router_ent: 1.720 | load_cv: 0.605 | max_load: 0.144 | aux: 0.0111 | remaining: 1588s    
+step 09419 (66.8%) | loss: 2.532060 | lrm: 0.33 | dt: 336ms | tok/sec: 779,360 | mfu: 24.1% | epoch: 1 | router_ent: 1.718 | load_cv: 0.599 | max_load: 0.142 | aux: 0.0111 | remaining: 1587s    
+step 09420 (66.8%) | loss: 2.532442 | lrm: 0.33 | dt: 336ms | tok/sec: 781,213 | mfu: 24.1% | epoch: 1 | router_ent: 1.720 | load_cv: 0.601 | max_load: 0.141 | aux: 0.0111 | remaining: 1587s    
+step 09421 (66.8%) | loss: 2.534671 | lrm: 0.33 | dt: 341ms | tok/sec: 767,993 | mfu: 23.7% | epoch: 1 | router_ent: 1.720 | load_cv: 0.600 | max_load: 0.141 | aux: 0.0111 | remaining: 1587s    
+step 09422 (66.8%) | loss: 2.533956 | lrm: 0.33 | dt: 339ms | tok/sec: 774,097 | mfu: 23.9% | epoch: 1 | router_ent: 1.727 | load_cv: 0.599 | max_load: 0.141 | aux: 0.0111 | remaining: 1586s    
+step 09423 (66.8%) | loss: 2.532158 | lrm: 0.33 | dt: 338ms | tok/sec: 776,568 | mfu: 24.0% | epoch: 1 | router_ent: 1.722 | load_cv: 0.596 | max_load: 0.142 | aux: 0.0111 | remaining: 1586s    
+step 09424 (66.8%) | loss: 2.538957 | lrm: 0.33 | dt: 339ms | tok/sec: 773,310 | mfu: 23.9% | epoch: 1 | router_ent: 1.718 | load_cv: 0.600 | max_load: 0.140 | aux: 0.0111 | remaining: 1586s    
+step 09425 (66.8%) | loss: 2.538882 | lrm: 0.33 | dt: 338ms | tok/sec: 775,338 | mfu: 23.9% | epoch: 1 | router_ent: 1.728 | load_cv: 0.594 | max_load: 0.140 | aux: 0.0111 | remaining: 1585s    
+step 09426 (66.9%) | loss: 2.532818 | lrm: 0.33 | dt: 336ms | tok/sec: 779,999 | mfu: 24.1% | epoch: 1 | router_ent: 1.725 | load_cv: 0.594 | max_load: 0.140 | aux: 0.0111 | remaining: 1585s    
+step 09427 (66.9%) | loss: 2.533155 | lrm: 0.33 | dt: 338ms | tok/sec: 776,703 | mfu: 24.0% | epoch: 1 | router_ent: 1.726 | load_cv: 0.600 | max_load: 0.141 | aux: 0.0112 | remaining: 1585s    
+--- gpu
+0, 100, 74, 49679, 81559, 686.66, 700.00
+1, 99, 62, 49679, 81559, 697.44, 700.00
+2, 99, 72, 49679, 81559, 688.00, 700.00
+3, 100, 61, 49679, 81559, 692.30, 700.00
+
+===== 2026-06-11T22:03:01+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      01:57:53 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     01:57:53 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+     01:04:07 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl     01:04:04 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl     01:04:04 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl     01:04:04 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl     01:04:04 /opt/conda/bin/python3 -u train.py
+2445044 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 11158 (79.1%) | loss: 2.466181 | lrm: 0.19 | dt: 342ms | tok/sec: 765,767 | mfu: 23.6% | epoch: 1 | router_ent: 1.832 | load_cv: 0.538 | max_load: 0.139 | aux: 0.0103 | remaining: 997s    
+step 11159 (79.1%) | loss: 2.464558 | lrm: 0.19 | dt: 335ms | tok/sec: 781,433 | mfu: 24.1% | epoch: 1 | router_ent: 1.827 | load_cv: 0.546 | max_load: 0.140 | aux: 0.0103 | remaining: 996s    
+step 11160 (79.2%) | loss: 2.462553 | lrm: 0.19 | dt: 335ms | tok/sec: 782,607 | mfu: 24.2% | epoch: 1 | router_ent: 1.832 | load_cv: 0.537 | max_load: 0.139 | aux: 0.0103 | remaining: 996s    
+step 11161 (79.2%) | loss: 2.465822 | lrm: 0.19 | dt: 338ms | tok/sec: 776,107 | mfu: 24.0% | epoch: 1 | router_ent: 1.823 | load_cv: 0.548 | max_load: 0.141 | aux: 0.0103 | remaining: 996s    
+step 11162 (79.2%) | loss: 2.463588 | lrm: 0.19 | dt: 338ms | tok/sec: 775,158 | mfu: 23.9% | epoch: 1 | router_ent: 1.827 | load_cv: 0.543 | max_load: 0.140 | aux: 0.0103 | remaining: 995s    
+step 11163 (79.2%) | loss: 2.467412 | lrm: 0.19 | dt: 336ms | tok/sec: 780,665 | mfu: 24.1% | epoch: 1 | router_ent: 1.828 | load_cv: 0.549 | max_load: 0.141 | aux: 0.0103 | remaining: 995s    
+step 11164 (79.2%) | loss: 2.468394 | lrm: 0.19 | dt: 338ms | tok/sec: 776,009 | mfu: 23.9% | epoch: 1 | router_ent: 1.824 | load_cv: 0.544 | max_load: 0.142 | aux: 0.0103 | remaining: 995s    
+step 11165 (79.2%) | loss: 2.471900 | lrm: 0.19 | dt: 337ms | tok/sec: 777,458 | mfu: 24.0% | epoch: 1 | router_ent: 1.826 | load_cv: 0.544 | max_load: 0.140 | aux: 0.0103 | remaining: 994s    
+step 11166 (79.2%) | loss: 2.472804 | lrm: 0.19 | dt: 337ms | tok/sec: 778,928 | mfu: 24.0% | epoch: 1 | router_ent: 1.827 | load_cv: 0.546 | max_load: 0.142 | aux: 0.0103 | remaining: 994s    
+step 11167 (79.2%) | loss: 2.476139 | lrm: 0.19 | dt: 337ms | tok/sec: 776,735 | mfu: 24.0% | epoch: 1 | router_ent: 1.832 | load_cv: 0.544 | max_load: 0.140 | aux: 0.0103 | remaining: 994s    
+step 11168 (79.2%) | loss: 2.476127 | lrm: 0.19 | dt: 338ms | tok/sec: 774,537 | mfu: 23.9% | epoch: 1 | router_ent: 1.832 | load_cv: 0.539 | max_load: 0.141 | aux: 0.0103 | remaining: 993s    
+step 11169 (79.2%) | loss: 2.477953 | lrm: 0.19 | dt: 338ms | tok/sec: 775,637 | mfu: 23.9% | epoch: 1 | router_ent: 1.832 | load_cv: 0.546 | max_load: 0.141 | aux: 0.0103 | remaining: 993s    
+step 11170 (79.2%) | loss: 2.481288 | lrm: 0.19 | dt: 338ms | tok/sec: 776,316 | mfu: 24.0% | epoch: 1 | router_ent: 1.832 | load_cv: 0.545 | max_load: 0.142 | aux: 0.0103 | remaining: 992s    
+step 11171 (79.2%) | loss: 2.475829 | lrm: 0.19 | dt: 336ms | tok/sec: 779,710 | mfu: 24.1% | epoch: 1 | router_ent: 1.830 | load_cv: 0.540 | max_load: 0.140 | aux: 0.0103 | remaining: 992s    
+step 11172 (79.2%) | loss: 2.478322 | lrm: 0.19 | dt: 338ms | tok/sec: 775,757 | mfu: 23.9% | epoch: 1 | router_ent: 1.830 | load_cv: 0.537 | max_load: 0.141 | aux: 0.0103 | remaining: 992s    
+step 11173 (79.2%) | loss: 2.477657 | lrm: 0.19 | dt: 341ms | tok/sec: 768,907 | mfu: 23.7% | epoch: 1 | router_ent: 1.832 | load_cv: 0.544 | max_load: 0.140 | aux: 0.0103 | remaining: 991s    
+step 11174 (79.3%) | loss: 2.477208 | lrm: 0.19 | dt: 336ms | tok/sec: 781,029 | mfu: 24.1% | epoch: 1 | router_ent: 1.833 | load_cv: 0.537 | max_load: 0.141 | aux: 0.0103 | remaining: 991s    
+step 11175 (79.3%) | loss: 2.474570 | lrm: 0.19 | dt: 337ms | tok/sec: 777,591 | mfu: 24.0% | epoch: 1 | router_ent: 1.834 | load_cv: 0.545 | max_load: 0.140 | aux: 0.0103 | remaining: 991s    
+step 11176 (79.3%) | loss: 2.469295 | lrm: 0.19 | dt: 340ms | tok/sec: 771,810 | mfu: 23.8% | epoch: 1 | router_ent: 1.835 | load_cv: 0.541 | max_load: 0.139 | aux: 0.0103 | remaining: 990s    
+step 11177 (79.3%) | loss: 2.467522 | lrm: 0.19 | dt: 336ms | tok/sec: 781,120 | mfu: 24.1% | epoch: 1 | router_ent: 1.832 | load_cv: 0.532 | max_load: 0.139 | aux: 0.0103 | remaining: 990s    
+step 11178 (79.3%) | loss: 2.465932 | lrm: 0.19 | dt: 336ms | tok/sec: 780,427 | mfu: 24.1% | epoch: 1 | router_ent: 1.833 | load_cv: 0.537 | max_load: 0.139 | aux: 0.0103 | remaining: 990s    
+step 11179 (79.3%) | loss: 2.466999 | lrm: 0.19 | dt: 336ms | tok/sec: 780,038 | mfu: 24.1% | epoch: 1 | router_ent: 1.830 | load_cv: 0.542 | max_load: 0.139 | aux: 0.0103 | remaining: 989s    
+step 11180 (79.3%) | loss: 2.465768 | lrm: 0.19 | dt: 339ms | tok/sec: 774,096 | mfu: 23.9% | epoch: 1 | router_ent: 1.832 | load_cv: 0.547 | max_load: 0.141 | aux: 0.0103 | remaining: 989s    
+step 11181 (79.3%) | loss: 2.462274 | lrm: 0.19 | dt: 337ms | tok/sec: 778,428 | mfu: 24.0% | epoch: 1 | router_ent: 1.838 | load_cv: 0.550 | max_load: 0.142 | aux: 0.0103 | remaining: 989s    
+step 11182 (79.3%) | loss: 2.463910 | lrm: 0.19 | dt: 337ms | tok/sec: 776,896 | mfu: 24.0% | epoch: 1 | router_ent: 1.836 | load_cv: 0.544 | max_load: 0.141 | aux: 0.0103 | remaining: 988s    
+step 11183 (79.3%) | loss: 2.460493 | lrm: 0.19 | dt: 341ms | tok/sec: 768,722 | mfu: 23.7% | epoch: 1 | router_ent: 1.839 | load_cv: 0.543 | max_load: 0.140 | aux: 0.0103 | remaining: 988s    
+step 11184 (79.3%) | loss: 2.460488 | lrm: 0.19 | dt: 334ms | tok/sec: 785,222 | mfu: 24.2% | epoch: 1 | router_ent: 1.839 | load_cv: 0.531 | max_load: 0.139 | aux: 0.0102 | remaining: 988s    
+step 11185 (79.3%) | loss: 2.462516 | lrm: 0.19 | dt: 338ms | tok/sec: 776,483 | mfu: 24.0% | epoch: 1 | router_ent: 1.835 | load_cv: 0.535 | max_load: 0.140 | aux: 0.0102 | remaining: 987s    
+step 11186 (79.3%) | loss: 2.465705 | lrm: 0.19 | dt: 337ms | tok/sec: 778,612 | mfu: 24.0% | epoch: 1 | router_ent: 1.836 | load_cv: 0.538 | max_load: 0.140 | aux: 0.0102 | remaining: 987s    
+step 11187 (79.3%) | loss: 2.467115 | lrm: 0.19 | dt: 338ms | tok/sec: 774,786 | mfu: 23.9% | epoch: 1 | router_ent: 1.839 | load_cv: 0.542 | max_load: 0.141 | aux: 0.0103 | remaining: 987s    
+step 11188 (79.4%) | loss: 2.461777 | lrm: 0.19 | dt: 338ms | tok/sec: 775,088 | mfu: 23.9% | epoch: 1 | router_ent: 1.838 | load_cv: 0.540 | max_load: 0.140 | aux: 0.0103 | remaining: 986s    
+step 11189 (79.4%) | loss: 2.463214 | lrm: 0.19 | dt: 339ms | tok/sec: 774,391 | mfu: 23.9% | epoch: 1 | router_ent: 1.837 | load_cv: 0.533 | max_load: 0.139 | aux: 0.0102 | remaining: 986s    
+step 11190 (79.4%) | loss: 2.463310 | lrm: 0.19 | dt: 336ms | tok/sec: 780,455 | mfu: 24.1% | epoch: 1 | router_ent: 1.835 | load_cv: 0.540 | max_load: 0.139 | aux: 0.0103 | remaining: 986s    
+step 11191 (79.4%) | loss: 2.463947 | lrm: 0.19 | dt: 338ms | tok/sec: 775,292 | mfu: 23.9% | epoch: 1 | router_ent: 1.833 | load_cv: 0.540 | max_load: 0.140 | aux: 0.0103 | remaining: 985s    
+step 11192 (79.4%) | loss: 2.463040 | lrm: 0.19 | dt: 337ms | tok/sec: 777,427 | mfu: 24.0% | epoch: 1 | router_ent: 1.830 | load_cv: 0.542 | max_load: 0.139 | aux: 0.0103 | remaining: 985s    
+--- gpu
+0, 96, 73, 49679, 81559, 690.67, 700.00
+1, 98, 62, 49679, 81559, 694.48, 700.00
+2, 98, 75, 49679, 81559, 685.20, 700.00
+3, 100, 63, 49679, 81559, 684.99, 700.00
+
+===== 2026-06-11T22:13:01+00:00 =====
+low_compute_baselines: 1 windows (created Thu Jun 11 20:05:08 2026)
+low_compute_monitor: 1 windows (created Thu Jun 11 20:42:59 2026)
+1585496       1 Ss      02:07:53 tmux new-session -d -s low_compute_baselines bash /root/autoresearch-moe/run_low_compute_baselines.sh
+1585497 1585496 Ss+     02:07:53 bash /root/autoresearch-moe/run_low_compute_baselines.sh
+2127082 1585497 Sl+     01:14:07 /opt/conda/bin/python3 /opt/conda/bin/torchrun --standalone --nproc_per_node=4 train.py
+2127155 2127082 Rsl     01:14:04 /opt/conda/bin/python3 -u train.py
+2127156 2127082 Rsl     01:14:04 /opt/conda/bin/python3 -u train.py
+2127157 2127082 Rsl     01:14:04 /opt/conda/bin/python3 -u train.py
+2127158 2127082 Rsl     01:14:04 /opt/conda/bin/python3 -u train.py
+2494518 1979994 S+         00:00 rg torchrun|train.py|run_low_compute_baselines
+--- driver
+[2026-06-11T20:05:08+00:00] starting S75 full
+log=run_logs/computeS75_full_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:20:34+00:00] finished S75 full
+[2026-06-11T20:20:34+00:00] starting S75 simple
+log=run_logs/computeS75_simple_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:37:18+00:00] finished S75 simple
+[2026-06-11T20:37:18+00:00] starting F1 simple
+log=run_logs/computeF1_simple_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+[2026-06-11T20:58:54+00:00] finished F1 simple
+[2026-06-11T20:58:54+00:00] starting F2 simple
+log=run_logs/computeF2_simple_lr003.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.003 device_batch_size=32
+--- active_log: run_logs/computeF2_simple_lr003.log
+step 12924 (91.7%) | loss: 2.387870 | lrm: 0.12 | dt: 336ms | tok/sec: 780,362 | mfu: 24.1% | epoch: 1 | router_ent: 1.924 | load_cv: 0.515 | max_load: 0.138 | aux: 0.0099 | remaining: 398s    
+step 12925 (91.7%) | loss: 2.392722 | lrm: 0.12 | dt: 337ms | tok/sec: 777,868 | mfu: 24.0% | epoch: 1 | router_ent: 1.929 | load_cv: 0.517 | max_load: 0.140 | aux: 0.0099 | remaining: 397s    
+step 12926 (91.7%) | loss: 2.392644 | lrm: 0.12 | dt: 337ms | tok/sec: 776,875 | mfu: 24.0% | epoch: 1 | router_ent: 1.919 | load_cv: 0.522 | max_load: 0.139 | aux: 0.0099 | remaining: 397s    
+step 12927 (91.7%) | loss: 2.394272 | lrm: 0.12 | dt: 336ms | tok/sec: 780,100 | mfu: 24.1% | epoch: 1 | router_ent: 1.923 | load_cv: 0.519 | max_load: 0.139 | aux: 0.0098 | remaining: 397s    
+step 12928 (91.7%) | loss: 2.391719 | lrm: 0.12 | dt: 339ms | tok/sec: 773,070 | mfu: 23.9% | epoch: 1 | router_ent: 1.922 | load_cv: 0.520 | max_load: 0.139 | aux: 0.0099 | remaining: 396s    
+step 12929 (91.7%) | loss: 2.393500 | lrm: 0.12 | dt: 337ms | tok/sec: 777,092 | mfu: 24.0% | epoch: 1 | router_ent: 1.922 | load_cv: 0.516 | max_load: 0.140 | aux: 0.0099 | remaining: 396s    
+step 12930 (91.7%) | loss: 2.392905 | lrm: 0.12 | dt: 337ms | tok/sec: 777,416 | mfu: 24.0% | epoch: 1 | router_ent: 1.919 | load_cv: 0.522 | max_load: 0.140 | aux: 0.0099 | remaining: 396s    
+step 12931 (91.7%) | loss: 2.392071 | lrm: 0.12 | dt: 338ms | tok/sec: 774,894 | mfu: 23.9% | epoch: 1 | router_ent: 1.923 | load_cv: 0.516 | max_load: 0.140 | aux: 0.0099 | remaining: 395s    
+step 12932 (91.7%) | loss: 2.394957 | lrm: 0.12 | dt: 337ms | tok/sec: 778,836 | mfu: 24.0% | epoch: 1 | router_ent: 1.923 | load_cv: 0.522 | max_load: 0.141 | aux: 0.0099 | remaining: 395s    
+step 12933 (91.7%) | loss: 2.395902 | lrm: 0.12 | dt: 338ms | tok/sec: 775,953 | mfu: 23.9% | epoch: 1 | router_ent: 1.922 | load_cv: 0.527 | max_load: 0.140 | aux: 0.0099 | remaining: 395s    
+step 12934 (91.7%) | loss: 2.396403 | lrm: 0.12 | dt: 338ms | tok/sec: 776,316 | mfu: 24.0% | epoch: 1 | router_ent: 1.925 | load_cv: 0.529 | max_load: 0.142 | aux: 0.0099 | remaining: 394s    
+step 12935 (91.7%) | loss: 2.397221 | lrm: 0.12 | dt: 337ms | tok/sec: 776,981 | mfu: 24.0% | epoch: 1 | router_ent: 1.920 | load_cv: 0.535 | max_load: 0.141 | aux: 0.0099 | remaining: 394s    
+step 12936 (91.8%) | loss: 2.395884 | lrm: 0.12 | dt: 338ms | tok/sec: 776,030 | mfu: 23.9% | epoch: 1 | router_ent: 1.918 | load_cv: 0.521 | max_load: 0.140 | aux: 0.0099 | remaining: 394s    
+step 12937 (91.8%) | loss: 2.397680 | lrm: 0.12 | dt: 338ms | tok/sec: 776,390 | mfu: 24.0% | epoch: 1 | router_ent: 1.919 | load_cv: 0.521 | max_load: 0.140 | aux: 0.0099 | remaining: 393s    
+step 12938 (91.8%) | loss: 2.396527 | lrm: 0.12 | dt: 338ms | tok/sec: 775,995 | mfu: 23.9% | epoch: 1 | router_ent: 1.922 | load_cv: 0.524 | max_load: 0.141 | aux: 0.0099 | remaining: 393s    
+step 12939 (91.8%) | loss: 2.399656 | lrm: 0.12 | dt: 337ms | tok/sec: 778,412 | mfu: 24.0% | epoch: 1 | router_ent: 1.921 | load_cv: 0.524 | max_load: 0.142 | aux: 0.0099 | remaining: 393s    
+step 12940 (91.8%) | loss: 2.402175 | lrm: 0.12 | dt: 337ms | tok/sec: 777,268 | mfu: 24.0% | epoch: 1 | router_ent: 1.918 | load_cv: 0.527 | max_load: 0.141 | aux: 0.0099 | remaining: 392s    
+step 12941 (91.8%) | loss: 2.400817 | lrm: 0.12 | dt: 338ms | tok/sec: 775,739 | mfu: 23.9% | epoch: 1 | router_ent: 1.919 | load_cv: 0.531 | max_load: 0.142 | aux: 0.0099 | remaining: 392s    
+step 12942 (91.8%) | loss: 2.405276 | lrm: 0.12 | dt: 336ms | tok/sec: 779,860 | mfu: 24.1% | epoch: 1 | router_ent: 1.917 | load_cv: 0.533 | max_load: 0.142 | aux: 0.0099 | remaining: 392s    
+step 12943 (91.8%) | loss: 2.401195 | lrm: 0.12 | dt: 337ms | tok/sec: 777,431 | mfu: 24.0% | epoch: 1 | router_ent: 1.914 | load_cv: 0.531 | max_load: 0.140 | aux: 0.0099 | remaining: 391s    
+step 12944 (91.8%) | loss: 2.399257 | lrm: 0.12 | dt: 338ms | tok/sec: 775,518 | mfu: 23.9% | epoch: 1 | router_ent: 1.919 | load_cv: 0.524 | max_load: 0.141 | aux: 0.0099 | remaining: 391s    
+step 12945 (91.8%) | loss: 2.401867 | lrm: 0.12 | dt: 338ms | tok/sec: 776,127 | mfu: 24.0% | epoch: 1 | router_ent: 1.921 | load_cv: 0.527 | max_load: 0.140 | aux: 0.0099 | remaining: 391s    
+step 12946 (91.8%) | loss: 2.400729 | lrm: 0.11 | dt: 338ms | tok/sec: 775,180 | mfu: 23.9% | epoch: 1 | router_ent: 1.922 | load_cv: 0.522 | max_load: 0.140 | aux: 0.0099 | remaining: 390s    
+step 12947 (91.8%) | loss: 2.401202 | lrm: 0.11 | dt: 336ms | tok/sec: 779,391 | mfu: 24.1% | epoch: 1 | router_ent: 1.919 | load_cv: 0.525 | max_load: 0.140 | aux: 0.0099 | remaining: 390s    
+step 12948 (91.8%) | loss: 2.402172 | lrm: 0.11 | dt: 340ms | tok/sec: 772,075 | mfu: 23.8% | epoch: 1 | router_ent: 1.919 | load_cv: 0.519 | max_load: 0.140 | aux: 0.0099 | remaining: 390s    
+step 12949 (91.8%) | loss: 2.405442 | lrm: 0.11 | dt: 336ms | tok/sec: 779,378 | mfu: 24.1% | epoch: 1 | router_ent: 1.919 | load_cv: 0.526 | max_load: 0.140 | aux: 0.0099 | remaining: 389s    
+step 12950 (91.9%) | loss: 2.405584 | lrm: 0.11 | dt: 337ms | tok/sec: 779,027 | mfu: 24.0% | epoch: 1 | router_ent: 1.920 | load_cv: 0.521 | max_load: 0.139 | aux: 0.0099 | remaining: 389s    
+step 12951 (91.9%) | loss: 2.405666 | lrm: 0.11 | dt: 337ms | tok/sec: 777,539 | mfu: 24.0% | epoch: 1 | router_ent: 1.923 | load_cv: 0.512 | max_load: 0.139 | aux: 0.0099 | remaining: 389s    
+step 12952 (91.9%) | loss: 2.402817 | lrm: 0.11 | dt: 337ms | tok/sec: 777,252 | mfu: 24.0% | epoch: 1 | router_ent: 1.918 | load_cv: 0.519 | max_load: 0.140 | aux: 0.0099 | remaining: 388s    
+step 12953 (91.9%) | loss: 2.401736 | lrm: 0.11 | dt: 337ms | tok/sec: 777,051 | mfu: 24.0% | epoch: 1 | router_ent: 1.922 | load_cv: 0.522 | max_load: 0.140 | aux: 0.0099 | remaining: 388s    
+step 12954 (91.9%) | loss: 2.395248 | lrm: 0.11 | dt: 336ms | tok/sec: 779,553 | mfu: 24.1% | epoch: 1 | router_ent: 1.920 | load_cv: 0.525 | max_load: 0.141 | aux: 0.0099 | remaining: 387s    
+step 12955 (91.9%) | loss: 2.394237 | lrm: 0.11 | dt: 337ms | tok/sec: 778,773 | mfu: 24.0% | epoch: 1 | router_ent: 1.923 | load_cv: 0.518 | max_load: 0.139 | aux: 0.0099 | remaining: 387s    
+step 12956 (91.9%) | loss: 2.394186 | lrm: 0.11 | dt: 339ms | tok/sec: 774,276 | mfu: 23.9% | epoch: 1 | router_ent: 1.926 | load_cv: 0.516 | max_load: 0.139 | aux: 0.0099 | remaining: 387s    
+step 12957 (91.9%) | loss: 2.394846 | lrm: 0.11 | dt: 335ms | tok/sec: 782,699 | mfu: 24.2% | epoch: 1 | router_ent: 1.921 | load_cv: 0.521 | max_load: 0.140 | aux: 0.0099 | remaining: 386s    
+step 12958 (91.9%) | loss: 2.386693 | lrm: 0.11 | dt: 337ms | tok/sec: 776,750 | mfu: 24.0% | epoch: 1 | router_ent: 1.924 | load_cv: 0.510 | max_load: 0.138 | aux: 0.0098 | remaining: 386s    
+--- gpu
+0, 100, 75, 49679, 81559, 696.49, 700.00
+1, 98, 61, 49679, 81559, 685.72, 700.00
+2, 100, 73, 49679, 81559, 693.30, 700.00
+3, 100, 62, 49679, 81559, 686.46, 700.00

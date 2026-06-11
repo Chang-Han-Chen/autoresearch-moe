@@ -20,6 +20,144 @@ This table tracks fixed-wall runs that became the new healthy working best. Perc
 
 Matched-step note: the two-dense stack stopped at the no-dense step count (`2515`) reached `0.939195`, beating the no-dense `0.940076` by `0.094%`. That supports a real sample-efficiency gain, but it is intentionally not a leaderboard row because it is not the fixed-wall protocol.
 
+## Sparsity Sweep Leaderboard
+
+| num_experts | sparsity ratio | val_bpb | steps | tokens_M | total_params_M | active_params_M | peak_vram_gb | mfu_percent | decision |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 4 | `50.0%` | `0.947202` | `3114` | `816.3` | `140.8` | `91.3` | `27.6` | `27.61` | discard |
+| 8 | `25.0%` | `0.938106` | `3013` | `789.8` | `239.9` | `91.3` | `28.2` | `26.71` | discard |
+| 16 | `12.5%` | `0.935178` | `2746` | `719.8` | `438.2` | `91.3` | `29.3` | `24.35` | keep |
+| 32 | `6.25%` | `0.938541` | `2308` | `605.0` | `834.6` | `91.4` | `31.6` | `20.46` | discard |
+| 64 | `3.125%` | `0.972360` | `1756` | `460.3` | `1627.5` | `91.6` | `36.2` | `15.57` | discard |
+| 128 | `1.5625%` | `1.034533` | `1183` | `310.1` | `3213.2` | `91.9` | `45.3` | `10.49` | discard |
+
+## Phase 1 Matched-Step Diagnostics
+
+No additional matched-step jobs were run after the fixed-wall sweep. The fixed-wall winner is the `E=16` anchor itself, no non-winner is within `0.001` BPB of the winner, and the slower higher-expert runs did not show a better same-step training-loss signal strong enough to justify a scale-candidate diagnostic.
+
+## Selected Sparsity Ratio
+
+Selected default:
+`NUM_EXPERTS=16`, `TOP_K=2`, sparsity ratio `12.5%`.
+
+Reason:
+`E=16` has the best fixed-wall validation result at `0.935178` BPB with clean router health and acceptable throughput. Lower expert counts are faster but lose too much sparse capacity, while higher expert counts remain stable but spend wall time and memory on inactive capacity instead of updates.
+
+Scale candidate, if any:
+none
+
+## Fine-Grained Expert Check
+
+| geometry | num_experts | top_k | moe_hidden_dim | dense_hidden_dim | sparsity ratio | val_bpb | steps | tokens_M | total_params_M | active_params_M | decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| coarse | 16 | 2 | 1792 | 3584 | `12.5%` | `0.935178` | `2746` | `719.8` | `438.2` | `91.3` | keep |
+| fine | 32 | 4 | 896 | 3584 | `12.5%` | `0.953126` | `2608` | `683.7` | `438.2` | `91.4` | discard |
+
+## Selected MoE Geometry
+
+Selected default:
+`NUM_EXPERTS=16`, `TOP_K=2`, `MOE_HIDDEN_DIM=1792`, `DENSE_HIDDEN_DIM=3584`.
+
+Reason:
+The fine-grained counterpart preserved the intended active width and sparsity ratio, but it was much worse fixed-wall: `0.953126` BPB versus the coarse anchor's `0.935178`. It also completed fewer steps and tokens, used more VRAM, and had lower MFU. Router health was safe, so this is an efficiency and optimization result rather than a collapse.
+
+Scale candidate, if any:
+none
+
+## Scale Validation
+
+| depth | model_dim | curve | num_experts | top_k | moe_hidden_dim | val_bpb | steps | tokens_M | total_params_M | active_params_M | peak_vram_gb | mfu_percent |
+|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 768 | full | 16 | 2 | 1792 | `0.935178` | `2746` | `719.8` | `438.2` | `91.3` | `29.3` | `24.35` |
+| 10 | 1024 | full | 16 | 2 | 2304 | `0.973316` | `1434` | `375.9` | `977.5` | `184.8` | `45.3` | `25.59` |
+| 12 | 1280 | full | 16 | 2 | 3072 | `1.045977` | `751` | `196.9` | `2003.1` | `351.6` | `69.5` | `24.90` |
+| 12 | 1280 | full lr=0.001 | 16 | 2 | 3072 | `1.063829` | `754` | `197.7` | `2003.1` | `351.6` | `69.5` | `24.98` |
+
+## Architecture Scaling Deltas
+
+| depth | model_dim | full_bpb | simple_bpb | simple_minus_full | relative_bpb_reduction | no_dense_bpb | no_dense_minus_full |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 7 | 640 | `0.902337` | `0.916017` | `0.013680` | `1.493%` | -- | -- |
+| 8 | 768 | `0.892152` | `0.892165` | `0.000013` | `0.001%` | -- | -- |
+| 10 | 1024 | `0.821625` | `0.844628` | `0.023003` | `2.723%` | -- | -- |
+
+F2 note: the full recipe also beats the simple control at matched AdamW LR `0.003` (`0.822997` vs `0.844628`, delta `0.021631`, `2.561%` relative), so the F2 architecture gap is not only LR selection.
+
+## Scale LR Follow-Up
+
+After the fixed-LR scale/control points, sweep AdamW peak LR locally around any viable larger config with roughly 3x spacing. Use `0.003` as the current anchor, prioritize lower candidates such as `0.001` and `0.0003` as model size increases, and keep the Muon LR tied by the existing shape-aware formula.
+
+## Compute-Optimal Protocol Pivot
+
+The fixed-wall protocol is useful for throughput-aware iteration, but it is not the right protocol for scaling-law decisions. For the selected `~91M` active-parameter model, use a rough compute-optimal token target of `20` tokens per active parameter: `91M * 20 ~= 1.8B` tokens. With `TOTAL_BATCH_SIZE=262,144`, this is `~6866` optimizer steps, rounded to `7000`.
+
+For these runs, use `AR_MAX_STEPS=7000` and `AR_ESTIMATED_TOTAL_STEPS=7000` so the cosine schedule matches the step budget. Sweep AdamW peak LR only on a coarse 3x log grid: `0.000333`, `0.001`, `0.003`.
+
+Data note: from this point forward, use the full downloaded train pool (`400` train shards, pinned validation shard excluded). Exact tokenizer-count samples show about `63.3M` training tokens per shard including BOS, or about `25.3B` train tokens total, so the planned F1-F5 compute-optimal targets stay under one epoch.
+
+### Compute-Optimal Scale Targets
+
+Assuming `20` training tokens per active parameter and `TOTAL_BATCH_SIZE=262,144` tokens:
+
+| size | depth | model_dim | active_params_M | target_tokens_B | target_steps |
+|---|---:|---:|---:|---:|---:|
+| S75 | 7 | 640 | `76.0` | `1.519` | `5800` |
+| F1 | 8 | 768 | `91.3` | `1.827` | `6968` |
+| F2 | 10 | 1024 | `184.8` | `3.696` | `14099` |
+| F3 | 12 | 1280 | `351.6` | `7.033` | `26827` |
+| F4 | 14 | 1536 | `565.2` | `11.304` | `43122` |
+| F5 | 16 | 1792 | `852.2` | `17.045` | `65021` |
+
+S75 uses `HEAD_DIM=64`, `NUM_HEADS=10`, `NUM_KV_HEADS=2`, and `MOE_HIDDEN_DIM=2176`.
+
+## Compute-Optimal 90M LR Sweep
+
+| adamw_lr | steps | tokens_B | val_bpb | train_ce | peak_vram_gb | mfu_percent | router note | decision |
+|---:|---:|---:|---:|---:|---:|---:|---|---|
+| `0.003` | `7000` | `1.835` | `0.892152` | `2.307537` | `29.3` | `24.30` | mean CV `0.0661`, max-layer max load `0.0779` | keep pending LR sweep |
+| `0.001` | `7000` | `1.835` | `0.936404` | `2.419355` | `29.3` | `24.33` | mean CV `0.0563`, max-layer max load `0.0743` | discard |
+
+## Compute-Optimal Full-Data Scale Runs
+
+Use this table for scale-law decisions after switching to the full `400`-shard train pool.
+
+| size | depth | model_dim | adamw_lr | steps | tokens_B | val_bpb | train_ce | total_params_M | active_params_M | peak_vram_gb | mfu_percent | router note | decision |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| F2 | 10 | 1024 | `0.003` | `14099` | `3.696` | `0.822997` | `2.263927` | `977.5` | `184.8` | `45.3` | `25.66` | mean CV `0.0850`, max-layer max load `0.0780` | discard; `0.001` better |
+| F2 | 10 | 1024 | `0.001` | `14099` | `3.696` | `0.821625` | `2.262125` | `977.5` | `184.8` | `45.3` | `25.69` | mean CV `0.0752`, max-layer max load `0.0753` | selected F2 LR anchor |
+| F2 | 10 | 1024 | `0.000333` | `14099` | `3.696` | `0.946376` | `2.610592` | `977.5` | `184.8` | `45.3` | `25.76` | mean CV `0.0404`, max-layer max load `0.0713` | discard; undertrained |
+| F3 | 12 | 1280 | `0.001` | `26827` | `7.033` | `0.765974` | `2.178932` | `2003.1` | `351.6` | `69.5` | `25.19` | mean CV `0.0958`, max-layer max load `0.0833` | selected F3 LR anchor |
+| F3 | 12 | 1280 | `0.003` | `2600` | `0.682` | -- | -- | `2003.1` | `351.6` | -- | `~25.1` | matched step `2599`: loss `2.7449` vs `2.6545` at LR `0.001`, load CV `0.226` vs `0.098` | aborted; do not test higher |
+| F4 | 14 | 1536 | `0.001` | `43122` | `11.304` | `0.736565` | `2.020725` | `3339.7` | `565.2` | `64.9` | `24.30` | mean CV `0.1686`, max-layer max load `0.0946` | selected F4 result |
+| F4 | 14 | 1536 | `0.0003` | `34232` | `8.974` | -- | -- | `3339.7` | `565.2` | `~72.4 live` | `24.30` | stopped at `79.4%`; last-300 loss `2.3119`; matched-window loss `2.3121` vs `2.1490` for LR `0.001` | aborted; undertrained |
+
+## Low-Compute Baseline Scaling Results
+
+Ran the simple-backbone controls at S75, F1, and F2 under the same `20` tokens/active-parameter protocol, then compared against the full-recipe curve. The simple controls disable the dense stem, fixed value mix, exclusive attention, headwise attention gate, sigmoid-affinity routing, and expert-bias routing; they use softmax top-k routing with `LOAD_BALANCE_LOSS_COEF=0.0085`.
+
+| size | curve | depth | model_dim | head_dim | num_heads | num_kv_heads | moe_hidden_dim | adamw_lr | steps | tokens_B | val_bpb | train_ce | active_params_M | mfu_percent | router note | status |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| S75 | full | 7 | 640 | 64 | 10 | 2 | 2176 | `0.003` | `5800` | `1.520` | `0.902337` | `2.509520` | `76.0` | `22.69` | mean CV `0.0622`, max-layer max load `0.0755` | completed |
+| S75 | simple | 7 | 640 | 64 | 10 | 2 | 2176 | `0.003` | `5800` | `1.520` | `0.916017` | `2.547789` | `75.9` | `20.23` | mean CV `0.4888`, max-layer max load `0.3366` | completed |
+| F1 | simple | 8 | 768 | 128 | 6 | 2 | 1792 | `0.003` | `7000` | `1.835` | `0.892165` | `2.477874` | `91.3` | `22.81` | mean CV `0.3706`, max-layer max load `0.2076` | completed |
+| F2 | simple | 10 | 1024 | 128 | 8 | 2 | 2304 | `0.003` | `14099` | `3.696` | `0.844628` | `2.324253` | `184.7` | `23.89` | mean CV `0.5187`, max-layer max load `0.2174` | completed |
+
+Interpretation:
+The low-compute controls show a non-monotone but scale-positive architecture gap. S75 full beats simple by `0.013680` BPB, F1 is effectively tied on validation (`0.000013` BPB), and F2 full beats simple by `0.023003` BPB using the selected F2 LR anchor. The F2 simple run also showed repeated transient router/loss instability around early and mid training, including loss spikes above `6`, before recovering late; the final router health remained much worse than the full F2 anchor.
+
+### Fixed-Wall Estimate From Low-Compute Controls
+
+Use the full-recipe wall clock as the budget, since it is the faster curve, and estimate where the slower simple baseline would be at that same elapsed time. These are estimates from observed throughput and late train-loss slope, not separate validation checkpoints at the cutoff steps.
+
+| size | simple cutoff at full wall | simple final_bpb | estimated simple_bpb at full wall | full_bpb | estimated fixed-wall gain | note |
+|---|---:|---:|---:|---:|---:|---|
+| S75 | `~5350 / 5800` steps | `0.916017` | `~0.920-0.921` | `0.902337` | `~0.018-0.019` BPB | full is about `8%` faster |
+| F1 | `~6570 / 7000` steps | `0.892165` | `~0.896-0.898` | `0.892152` | `~0.004-0.006` BPB | mostly speed; matched-step validation is tied |
+| F2 | `~13125 / 14099` steps | `0.844628` | `~0.850-0.852` | `0.821625` selected / `0.822997` matched LR | `~0.028-0.030` BPB | strong at matched steps and stronger fixed-wall |
+
+Interpretation:
+At fixed wall clock, S75 and F2 show larger gains than the matched-step table because the full recipe reaches the target in less time. F1 remains the weakest point: the direct validation comparison is a tie, so any fixed-wall advantage there is mainly a throughput/sample-count effect and should not be overclaimed without validating a simple checkpoint near the cutoff.
+
 ## Initial Phase Baseline
 
 Commit:
@@ -850,3 +988,483 @@ discard/abort; restore the two-dense fixed-wall best stack
 
 Next run:
 Close fixed deterministic layer scaling for now. If revisited, use a gentler or learnable output-side scale rather than hard `1/sqrt(layer)`. Move back to higher-level architecture changes, with shared experts as the next high-signal candidate.
+
+### run 31: expert-count E=16
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+The current `E=16` best-stack geometry should reproduce the known healthy anchor near `0.938179` BPB under the corrected 450-second budget, with about `91.3M` active params and clean router load.
+
+Observed result:
+`val_bpb 0.935178`, `2746` steps, `719.8M` tokens, `29.3GB` peak VRAM, and `24.35%` MFU.
+Total params `438.2M`, active params `91.3M`.
+Router health: mean load CV `0.0554`, max-layer load CV `0.0676`, mean max load `0.0696`, max-layer max load `0.0718`, mean router bias abs `0.0081`, max router bias abs `0.0232`.
+
+Interpretation:
+The corrected 450-second setup reproduces the best architecture cleanly and actually beats the previously logged BPB while landing close on steps, tokens, memory, and MFU. Router health is at least as good as the logged best, so this run is a sound `E=16` anchor for the sparsity sweep.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep
+
+Next run:
+Run the lower-capacity `E=4` expert-count sweep point.
+
+### run 32: expert-count E=4
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+`E=4` should be faster and use less memory because total sparse capacity is much smaller. The risk is that cutting total expert capacity from `16` to `4` experts may hurt BPB even with more fixed-wall steps.
+
+Observed result:
+`val_bpb 0.947202`, `3114` steps, `816.3M` tokens, `27.6GB` peak VRAM, and `27.61%` MFU.
+Total params `140.8M`, active params `91.3M`.
+Router health: mean load CV `0.0334`, max-layer load CV `0.0628`, mean max load `0.2611`, max-layer max load `0.2725`, mean router bias abs `0.0045`, max router bias abs `0.0118`.
+
+Interpretation:
+The low-expert run is much faster and leaner, but the capacity loss dominates: BPB is worse than the `E=16` anchor by `0.012024` despite `368` extra steps and `96.5M` extra tokens. Router behavior is healthy for `E=4`; max load is close to the `0.25` uniform baseline and well below the ratio-aware collapse threshold. This is a quality/capacity failure, not a routing failure.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+discard
+
+Next run:
+Run the intermediate `E=8` expert-count sweep point.
+
+### run 33: expert-count E=8
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+`E=8` should land between `E=4` and `E=16`: less memory and higher throughput than the anchor, but enough total expert capacity to recover much of the quality lost by `E=4`.
+
+Observed result:
+`val_bpb 0.938106`, `3013` steps, `789.8M` tokens, `28.2GB` peak VRAM, and `26.71%` MFU.
+Total params `239.9M`, active params `91.3M`.
+Router health: mean load CV `0.0429`, max-layer load CV `0.0557`, mean max load `0.1338`, max-layer max load `0.1387`, mean router bias abs `0.0065`, max router bias abs `0.0222`.
+
+Interpretation:
+The intermediate expert count behaves as expected on speed, memory, and router health, but it still trails the `E=16` anchor by `0.002928` BPB despite `267` extra steps and `70.0M` extra tokens. It recovers most of the `E=4` quality loss, so the capacity curve is real, but the best fixed-wall quality remains at `E=16` among tested smaller counts.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+discard
+
+Next run:
+Run the higher-capacity `E=32` expert-count sweep point.
+
+### run 34: expert-count E=32
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+`E=32` has twice the total expert capacity of the `E=16` anchor, so it may improve BPB if capacity is still limiting. The risk is that the much larger total parameter and optimizer state footprint reduces fixed-wall token count enough to erase any quality gain.
+
+Observed result:
+`val_bpb 0.938541`, `2308` steps, `605.0M` tokens, `31.6GB` peak VRAM, and `20.46%` MFU.
+Total params `834.6M`, active params `91.4M`.
+Router health: mean load CV `0.0906`, max-layer load CV `0.1338`, mean max load `0.0378`, max-layer max load `0.0440`, mean router bias abs `0.0098`, max router bias abs `0.1247`.
+
+Interpretation:
+The higher-capacity run is healthy but not competitive. It is worse than the `E=16` anchor by `0.003363` BPB and also slightly worse than `E=8`, while using more memory and completing `438` fewer steps than the anchor. Routing is not the problem: max load is low relative to the `1/32` uniform baseline and far below the collapse threshold, though the maximum router bias is larger than the smaller-expert-count runs. This is a fixed-wall efficiency failure for this scale.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard
+
+Next run:
+Run the larger `E=64` expert-count sweep point unless it fails memory or initialization.
+
+### run 35: expert-count E=64
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+`E=64` tests whether much larger total sparse capacity can compensate for a major throughput and memory penalty. It may become a scale candidate only if its sample-efficiency signal is clearly better despite worse fixed-wall speed.
+
+Observed result:
+`val_bpb 0.972360`, `1756` steps, `460.3M` tokens, `36.2GB` peak VRAM, and `15.57%` MFU.
+Total params `1627.5M`, active params `91.6M`.
+Router health: mean load CV `0.1289`, max-layer load CV `0.1371`, mean max load `0.0233`, max-layer max load `0.0248`, mean router bias abs `0.0121`, max router bias abs `0.1777`.
+
+Interpretation:
+The run is stable and routing is healthy, but the fixed-wall tradeoff is very poor. The model completes only `1756` steps and `460.3M` tokens, producing BPB far worse than the `E=16` anchor. The max expert load is below the ratio-aware collapse threshold for `E=64`, and expert bias stays under the clamp, so this is not a router failure. It is an optimizer-state and throughput penalty overwhelming any benefit from extra inactive capacity.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard
+
+Next run:
+Try the largest planned `E=128` expert-count sweep point and log the fixed-wall result or the exact memory failure.
+
+### run 36: expert-count E=128
+
+Kind/thread:
+sparsity / expert-count
+
+Pre-run hypothesis:
+At fixed `TOP_K=2` and `MOE_HIDDEN_DIM=1792`, changing `NUM_EXPERTS` changes total sparse capacity and sparsity ratio while keeping active expert compute roughly fixed.
+
+Expected result:
+`E=128` is the extreme-capacity point in the sweep. It may fail from memory or, if it fits, should expose whether very high inactive capacity gives any sample-efficiency signal strong enough to overcome a large optimizer-state and dispatch penalty.
+
+Observed result:
+`val_bpb 1.034533`, `1183` steps, `310.1M` tokens, `45.3GB` peak VRAM, and `10.49%` MFU.
+Total params `3213.2M`, active params `91.9M`.
+Router health: mean load CV `0.1844`, max-layer load CV `0.2020`, mean max load `0.0128`, max-layer max load `0.0137`, mean router bias abs `0.0165`, max router bias abs `0.2211`.
+
+Interpretation:
+The largest planned expert count fits and trains stably, but it is decisively noncompetitive. It reaches only `1183` steps and `310.1M` tokens under the fixed wall clock, and validation is much worse than every smaller expert count. Routing does not collapse: final max load is low and max-layer load CV is far below the safety cutoff, though the expert-bias controller comes close to its clamp. This confirms the high-expert regime is limited by optimizer state, memory traffic, and wall-clock progress, not by active compute or router instability.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+discard
+
+Next run:
+Close Phase 1 by selecting the `E=16`, top-2 sparsity ratio, then run the fine-grained Phase 2 counterpart.
+
+### run 37: fine-grained experts E=32 top_k=4 hidden=896
+
+Kind/thread:
+sparsity / fine-grained-experts
+
+Pre-run hypothesis:
+At the selected sparsity ratio, replacing each coarse expert with two half-width experts and activating four experts per token may improve specialization while preserving active FFN width and total expert width.
+
+Expected result:
+Better fixed-wall BPB or better matched-step CE/BPB than the selected coarse `E=16/top-2/1792` run, without severe throughput loss or router instability.
+
+Observed result:
+`val_bpb 0.953126`, `2608` steps, `683.7M` tokens, `31.6GB` peak VRAM, and `23.14%` MFU.
+Total params `438.2M`, active params `91.4M`.
+Router health: mean load CV `0.0910`, max-layer load CV `0.1093`, mean max load `0.0383`, max-layer max load `0.0422`, mean router bias abs `0.0100`, max router bias abs `0.0543`.
+
+Interpretation:
+The fine-grained geometry is router-safe, but it is decisively worse than the coarse anchor. It loses `0.017948` BPB, completes `138` fewer steps and `36.1M` fewer tokens, uses more VRAM, and has lower MFU despite nearly identical total and active parameter counts. Train CE is also worse (`2.593632` vs `2.563341`), so there is no matched-step or scale-candidate signal to pursue.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard
+
+Next run:
+Use the coarse `E=16/top-2/1792` geometry for scaling. Treat run 31 as the depth-8 full-architecture F1 anchor, then run F2 at `DEPTH=10`, `MODEL_DIM=1024`, and `MOE_HIDDEN_DIM=2304`.
+
+### run 38: scale depth=10 dim=1024 curve=full
+
+Kind/thread:
+scaling / full
+
+Pre-run hypothesis:
+Scaling the selected full architecture from depth `8`, dim `768` to depth `10`, dim `1024` should test whether the architecture bundle remains stable and whether larger active capacity can improve validation under the same fixed wall-clock budget.
+
+Expected result:
+The model should fit and train without router collapse. BPB may improve if the larger active model's sample efficiency compensates for fewer wall-clock updates, but the main risk is undertraining from the lower token count and higher memory footprint.
+
+Observed result:
+`val_bpb 0.973316`, `1434` steps, `375.9M` tokens, `45.3GB` peak VRAM, and `25.59%` MFU.
+Total params `977.5M`, active params `184.8M`.
+Router health: mean load CV `0.0923`, max-layer load CV `0.1366`, mean max load `0.0733`, max-layer max load `0.0770`, mean router bias abs `0.0098`, max router bias abs `0.0482`.
+
+Interpretation:
+The full architecture scales mechanically and remains router-safe at this size, but the fixed-wall result is not competitive with the depth-8 anchor. The larger active model reaches only `1434` steps and `375.9M` tokens, so it is severely undertrained under the unchanged 450-second wall. This is a wall-clock/sample-budget scaling failure so far, not a routing failure.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+keep as scale datapoint
+
+Next run:
+Run F3 at `DEPTH=12`, `MODEL_DIM=1280`, and `MOE_HIDDEN_DIM=3072`, or log the exact OOM/failure if it does not fit.
+
+### run 39: scale depth=12 dim=1280 curve=full
+
+Kind/thread:
+scaling / full
+
+Pre-run hypothesis:
+Scaling the selected full architecture to depth `12`, dim `1280` tests whether the bundle still fits and trains cleanly near the memory ceiling, and whether the larger active model can compensate for substantially fewer fixed-wall updates.
+
+Expected result:
+The run may fit but is likely heavily wall-clock limited. Router safety is the main non-BPB check, since larger depth and width can expose layerwise expert concentration that was not visible at smaller sizes.
+
+Observed result:
+`val_bpb 1.045977`, `751` steps, `196.9M` tokens, `69.5GB` peak VRAM, and `24.90%` MFU.
+Total params `2003.1M`, active params `351.6M`.
+Router health: mean load CV `0.2301`, max-layer load CV `0.9632`, mean max load `0.1035`, max-layer max load `0.2745`, mean router bias abs `0.0182`, max router bias abs `0.0993`.
+
+Interpretation:
+The model fits and runs through validation, but it is not competitive under the fixed 450-second wall clock. It sees only `196.9M` tokens, less than one third of the depth-8 anchor, and validation degrades sharply. Average routing remains usable, but the final max-layer max expert load crosses the `E=16` safety threshold of `0.25`, so scale has introduced a layerwise router warning even without a full collapse.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+keep as scale datapoint with router warning
+
+Next run:
+Sweep F3 learning rate downward first. Larger F4/F5 points should be revisited later with smaller `DEVICE_BATCH_SIZE` and gradient accumulation, not treated as meaningful architecture results.
+
+### run 40: scale depth=12 dim=1280 curve=full lr=0.001
+
+Kind/thread:
+scaling-lr / full
+
+Pre-run hypothesis:
+The F3 `0.003` run may be too aggressive: it trained faster but ended with a layerwise router warning. Lowering AdamW peak LR to `0.001` could improve validation if router concentration or update noise is the main problem at this size.
+
+Expected result:
+Cleaner router load and possibly better BPB. The risk is undertraining, since F3 gets only about `750` optimizer steps under the fixed wall clock.
+
+Observed result:
+`val_bpb 1.063829`, `754` steps, `197.7M` tokens, `69.5GB` peak VRAM, and `24.98%` MFU.
+Total params `2003.1M`, active params `351.6M`.
+Router health: mean load CV `0.0889`, max-layer load CV `0.1192`, mean max load `0.0735`, max-layer max load `0.0806`, mean router bias abs `0.0058`, max router bias abs `0.0451`.
+
+Interpretation:
+Lowering LR fixed the router warning decisively, but it did not improve the model. Validation worsened by `0.017852` BPB versus F3 at `0.003`, and train CE was higher (`3.083678` vs `2.986518`). The F3 problem is not solved by going this low; `0.0003` is not worth running now.
+
+Agrees with hypothesis:
+partial
+
+Decision:
+discard as default, keep as LR datapoint
+
+Next run:
+Pivot away from fixed-wall scaling and run the selected 90M-active model to the compute-optimal token target with a coarse LR grid.
+
+### run 41: compute-optimal 90M lr=0.003
+
+Kind/thread:
+compute-optimal-90m / lr-sweep
+
+Pre-run hypothesis:
+The selected `~91M` active-parameter architecture should improve substantially when trained to the rough compute-optimal target (`~1.8B` tokens) rather than the 450-second fixed-wall budget. LR `0.003` is the fixed-wall winner and should be the high end of the coarse 3x LR grid.
+
+Expected result:
+Reach `7000` optimizer steps with the cosine schedule horizon also set to `7000`. Validation should beat the fixed-wall `0.935178` anchor if the compute target is useful. Router load should remain healthy because the selected E16 geometry was stable in the shorter runs.
+
+Observed result:
+`val_bpb 0.892152`, `7000` steps, `1.835B` tokens, `29.3GB` peak VRAM, and `24.30%` MFU.
+Total params `438.2M`, active params `91.3M`.
+Train CE `2.307537`, train total `2.310098`.
+Router health: mean load CV `0.0661`, max-layer load CV `0.1012`, mean max load `0.0720`, max-layer max load `0.0779`, mean router bias abs `0.0080`, max router bias abs `0.0277`.
+
+Interpretation:
+The compute-optimal protocol is sane for the 90M anchor: validation improves by `0.043026` BPB over the fixed-wall E16 result while keeping the same memory footprint and stable routing. LR `0.003` is a strong candidate, but it still needs the coarse lower-LR comparisons before selecting the compute-optimal default.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep pending LR sweep
+
+Next run:
+Run the same 90M compute-optimal setup at `ADAMW_LR=0.001`.
+
+### run 42: compute-optimal 90M lr=0.001
+
+Kind/thread:
+compute-optimal-90m / lr-sweep
+
+Pre-run hypothesis:
+Lowering AdamW peak LR by 3x may improve the long-run validation result if `0.003` is still too aggressive at the compute-optimal token target, though the risk is slower optimization over the fixed `7000` steps.
+
+Expected result:
+Router load should remain healthy. The key question is whether the lower LR can recover validation despite slower train-loss progress.
+
+Observed result:
+`val_bpb 0.936404`, `7000` steps, `1.835B` tokens, `29.3GB` peak VRAM, and `24.33%` MFU.
+Total params `438.2M`, active params `91.3M`.
+Train CE `2.419355`, train total `2.421871`.
+Router health: mean load CV `0.0563`, max-layer load CV `0.0821`, mean max load `0.0707`, max-layer max load `0.0743`, mean router bias abs `0.0054`, max router bias abs `0.0222`.
+
+Interpretation:
+LR `0.001` is much too slow for the 90M compute-optimal run. It slightly cleans up already-healthy router metrics, but validation worsens by `0.044252` BPB versus LR `0.003`, and train CE is higher by `0.111818`. This also underperforms the older fixed-wall E16 anchor, so the problem is optimization speed, not routing safety.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard
+
+Next run:
+Switch to the full downloaded train pool and run the F2 compute-optimal target at `ADAMW_LR=0.003`.
+
+### run 43: compute-optimal F2 full-data lr=0.003
+
+Kind/thread:
+compute-optimal-full-data-scale / lr-sweep
+
+Pre-run hypothesis:
+Scaling the selected full architecture to F2 (`DEPTH=10`, `MODEL_DIM=1024`, `MOE_HIDDEN_DIM=2304`, about `184.8M` active params) and training to the rough compute-optimal target should improve validation if the scaling protocol is meaningful. LR `0.003` is the high end of the coarse grid; it may still work because it won the 90M run, but the larger active model could eventually prefer a lower LR.
+
+Expected result:
+Run `14099` steps, matching `20` tokens per active parameter (`~3.696B` tokens) and the cosine schedule horizon. The run should remain under one full-data epoch, fit near the fixed-wall F2 memory footprint, and avoid router concentration. Validation should beat the 90M compute-optimal result if scale is paying off.
+
+Observed result:
+`val_bpb 0.822997`, `14099` steps, `3.696B` tokens, `45.3GB` peak VRAM, and `25.66%` MFU.
+Total params `977.5M`, active params `184.8M`.
+Train CE `2.263927`, train total `2.266572`.
+Router health: mean load CV `0.0850`, max-layer load CV `0.1108`, mean max load `0.0736`, max-layer max load `0.0780`, mean router bias abs `0.0119`, max router bias abs `0.0401`.
+
+Interpretation:
+This is the first full-data compute-optimal scale result and it is a strong positive scaling datapoint. It improves over the 90M `0.003` compute-optimal result by `0.069155` BPB and over the old fixed-wall F2 result by `0.150319` BPB, while using the expected memory footprint and staying router-safe. The run consumed only about `14.6%` of the full train pool, so data exhaustion is not a concern. LR `0.003` is not too aggressive at F2, but the local LR sweep is still needed before treating it as the default for larger models.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep pending LR sweep
+
+Next run:
+Run the same F2 full-data compute-optimal setup at `ADAMW_LR=0.001`. Skip `0.000333` unless `0.001` is competitive enough to suggest the optimum moved below `0.003`.
+
+### run 44: compute-optimal F2 full-data lr=0.001
+
+Kind/thread:
+compute-optimal-full-data-scale / lr-sweep
+
+Pre-run hypothesis:
+Lowering AdamW peak LR by 3x from the F2 high-LR point may improve the full-data compute-optimal result if the larger active model prefers a gentler schedule than the 90M anchor. The risk is slower optimization over the same fixed `14099` steps.
+
+Expected result:
+Run the same full `400`-shard train pool, `14099` optimizer steps, and `~3.696B` tokens. Router load should remain healthy. If validation worsens clearly, keep `0.003`; if it matches or improves, finish the coarse lower point at `0.000333`.
+
+Observed result:
+`val_bpb 0.821625`, `14099` steps, `3.696B` tokens, `45.3GB` peak VRAM, and `25.69%` MFU.
+Total params `977.5M`, active params `184.8M`.
+Train CE `2.262125`, train total `2.264702`.
+Router health: mean load CV `0.0752`, max-layer load CV `0.1062`, mean max load `0.0716`, max-layer max load `0.0753`, mean router bias abs `0.0086`, max router bias abs `0.0459`.
+
+Interpretation:
+LR `0.001` is the current F2 full-data best. It improves validation by `0.001372` BPB versus LR `0.003`, with nearly identical memory and throughput, slightly lower train CE, and cleaner mean router balance. The gain is small but directionally consistent enough that the F2 optimum may be around or below `0.001`; the lower coarse point is now worth running.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+keep as current F2 best pending lower LR
+
+Next run:
+Run the same F2 full-data compute-optimal setup at `ADAMW_LR=0.000333`. If it worsens, select `0.001` as the F2 LR anchor and move to F3 full-data compute-optimal scaling.
+
+### run 45: compute-optimal F2 full-data lr=0.000333
+
+Kind/thread:
+compute-optimal-full-data-scale / lr-sweep
+
+Pre-run hypothesis:
+Because LR `0.001` narrowly beat `0.003`, the lower coarse point should be tested to see whether the F2 optimum moved farther down. The main risk is severe undertraining over the fixed `14099` step budget.
+
+Expected result:
+Run the same full `400`-shard train pool and `~3.696B` token budget. Router load should be at least as clean as the higher-LR runs. The run is useful only if validation approaches or beats the `0.001` result; cleaner routing alone is not enough.
+
+Observed result:
+`val_bpb 0.946376`, `14099` steps, `3.696B` tokens, `45.3GB` peak VRAM, and `25.76%` MFU.
+Total params `977.5M`, active params `184.8M`.
+Train CE `2.610592`, train total `2.613160`.
+Router health: mean load CV `0.0404`, max-layer load CV `0.0585`, mean max load `0.0679`, max-layer max load `0.0713`, mean router bias abs `0.0051`, max router bias abs `0.0395`.
+
+Interpretation:
+LR `0.000333` is much too slow for F2 at this compute target. Validation is worse than LR `0.001` by `0.124751` BPB and train CE is higher by `0.348467`. The router is very balanced, but the quality loss is decisive; the F2 full-data LR anchor is `0.001`.
+
+Agrees with hypothesis:
+no
+
+Decision:
+discard; select F2 LR `0.001`
+
+Next run:
+Move to F3 full-data compute-optimal scaling with `DEPTH=12`, `MODEL_DIM=1280`, `MOE_HIDDEN_DIM=3072`, `ADAMW_LR=0.001`, and `AR_MAX_STEPS=26827` / `AR_ESTIMATED_TOTAL_STEPS=26827`.
+
+### run 46: compute-optimal F3 full-data lr=0.001
+
+Kind/thread:
+compute-optimal-full-data-scale / lr-sweep
+
+Pre-run hypothesis:
+Scaling the selected full architecture to F3 (`DEPTH=12`, `MODEL_DIM=1280`, `MOE_HIDDEN_DIM=3072`, about `351.6M` active params) and training to the rough compute-optimal target should improve validation if the full-data scaling protocol is meaningful. LR `0.001` is the selected F2 anchor and a plausible starting point for the larger active model.
+
+Expected result:
+Run `26827` steps, matching `20` tokens per active parameter (`~7.033B` tokens) and the cosine schedule horizon. The run should fit on 80GB H100s based on the fixed-wall F3 memory footprint, remain under one full-data epoch, and avoid sustained router concentration.
+
+Observed result:
+`val_bpb 0.765974`, `26827` steps, `7.033B` tokens, `69.5GB` peak VRAM, and `25.19%` MFU.
+Total params `2003.1M`, active params `351.6M`.
+Train CE `2.178932`, train total `2.181612`.
+Router health: mean load CV `0.0958`, max-layer load CV `0.1619`, mean max load `0.0751`, max-layer max load `0.0833`, mean router bias abs `0.0094`, max router bias abs `0.0315`.
+
+Interpretation:
+F3 is a strong positive full-data scaling point. It improves over the selected F2 LR `0.001` result by `0.055651` BPB while using the expected memory footprint and only about `27.8%` of the full train pool. Router load is somewhat noisier than F2 but not collapsed; max-layer max load stays close to uniform for top-2 over 16 experts.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+selected F3 LR anchor
+
+Next run:
+Start the high-LR F3 check at `ADAMW_LR=0.003` only as an early diagnostic. Stop it if matched-step loss and router balance are clearly worse than LR `0.001`; do not try higher LR unless the diagnostic unexpectedly reverses.
+
+### run 47: compute-optimal F3 full-data lr=0.003 early stop
+
+Kind/thread:
+compute-optimal-full-data-scale / lr-sweep
+
+Pre-run hypothesis:
+The F3 optimum might still be above `0.001`, but this is unlikely because F2 already preferred `0.001` over `0.003`, and larger active models generally do not require higher peak LR. A short matched-step diagnostic can reject the high side without spending the full `26827` steps.
+
+Expected result:
+If LR `0.003` is viable at F3, it should not trail LR `0.001` by matched-step training loss, and router concentration should be no worse than the completed LR `0.001` run.
+
+Observed result:
+Aborted around step `2600` (`~0.682B` tokens). MFU was normal at about `25.1%`, so throughput was not the issue. At matched step `2599`, LR `0.003` had loss `2.744902` versus LR `0.001` loss `2.654509`. Router balance was also worse: load CV `0.226` versus `0.098`, max load `0.103` versus `0.075`, and router entropy `1.174` versus `1.360`.
+
+Interpretation:
+The high-LR side is not promising at F3. The run is already substantially worse on optimization and routing before `10%` of the schedule, matching the F2 signal that `0.003` is above the useful range for larger full-data compute-optimal runs.
+
+Agrees with hypothesis:
+yes
+
+Decision:
+abort; do not test LR above `0.003`
+
+Next run:
+Move to F4 compute-optimal scaling from the F3/F2 LR anchor. Start with `ADAMW_LR=0.001`; use gradient accumulation if the F4 batch does not fit directly.
