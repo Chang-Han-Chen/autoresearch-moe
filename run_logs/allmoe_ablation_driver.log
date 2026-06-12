@@ -1,0 +1,19 @@
+[2026-06-11T22:40:22+00:00] starting S75 allmoe_full_interventions
+log=run_logs/computeS75_allmoe_fullint_lr003_h64.log
+depth=7 model_dim=640 head_dim=64 num_heads=10 num_kv_heads=2 moe_hidden_dim=2176
+steps=5800 adamw_lr=0.003 device_batch_size=32
+dense_early_layers=0 value_mix=1 exclusive_attention=1 headwise_attention_gate=1 router_sigmoid_affinity=1 router_expert_bias=1 load_balance=0.003
+[2026-06-11T22:57:24+00:00] finished S75 allmoe_full_interventions
+[2026-06-11T22:57:24+00:00] starting F1 allmoe_full_interventions
+log=run_logs/computeF1_allmoe_fullint_lr003.log
+depth=8 model_dim=768 head_dim=128 num_heads=6 num_kv_heads=2 moe_hidden_dim=1792
+steps=7000 adamw_lr=0.003 device_batch_size=32
+dense_early_layers=0 value_mix=1 exclusive_attention=1 headwise_attention_gate=1 router_sigmoid_affinity=1 router_expert_bias=1 load_balance=0.003
+[2026-06-11T23:19:47+00:00] finished F1 allmoe_full_interventions
+[2026-06-11T23:19:47+00:00] starting F2 allmoe_full_interventions
+log=run_logs/computeF2_allmoe_fullint_lr001.log
+depth=10 model_dim=1024 head_dim=128 num_heads=8 num_kv_heads=2 moe_hidden_dim=2304
+steps=14099 adamw_lr=0.001 device_batch_size=32
+dense_early_layers=0 value_mix=1 exclusive_attention=1 headwise_attention_gate=1 router_sigmoid_affinity=1 router_expert_bias=1 load_balance=0.003
+[2026-06-12T00:42:23+00:00] finished F2 allmoe_full_interventions
+[2026-06-12T00:42:23+00:00] finished all-MoE full-intervention ablation suite

@@ -77,11 +77,26 @@ none
 
 | depth | model_dim | full_bpb | simple_bpb | simple_minus_full | relative_bpb_reduction | no_dense_bpb | no_dense_minus_full |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 7 | 640 | `0.902337` | `0.916017` | `0.013680` | `1.493%` | -- | -- |
-| 8 | 768 | `0.892152` | `0.892165` | `0.000013` | `0.001%` | -- | -- |
-| 10 | 1024 | `0.821625` | `0.844628` | `0.023003` | `2.723%` | -- | -- |
+| 7 | 640 | `0.902337` | `0.916017` | `0.013680` | `1.493%` | `0.899251` | `-0.003086` |
+| 8 | 768 | `0.892152` | `0.892165` | `0.000013` | `0.001%` | `0.875468` | `-0.016684` |
+| 10 | 1024 | `0.821625` | `0.844628` | `0.023003` | `2.723%` | `0.824722` | `0.003097` |
 
 F2 note: the full recipe also beats the simple control at matched AdamW LR `0.003` (`0.822997` vs `0.844628`, delta `0.021631`, `2.561%` relative), so the F2 architecture gap is not only LR selection.
+
+No-dense note: the `no_dense` columns are the all-MoE ablation with every other full-recipe intervention still enabled, not the simple backbone.
+
+### First-Two-Dense Ablation With Full Interventions
+
+This ablation isolates the dense stem. It sets `AR_DENSE_EARLY_LAYERS=0` while keeping fixed value mix, exclusive attention, headwise attention gate, sigmoid-affinity routing, expert-bias routing, router z-loss `0.00075`, and load-balance coefficient `0.003`.
+
+| size | depth | model_dim | adamw_lr | steps | tokens_B | val_bpb | allmoe_minus_two_dense | train_ce | total_params_M | active_params_M | peak_vram_gb | mfu_percent | router note | status |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|
+| S75 | 7 | 640 | `0.003` | `5800` | `1.520` | `0.899251` | `-0.003086` | `2.502094` | `485.4` | `76.0` | `28.0` | `19.80` | mean CV `0.0570`, max-layer max load `0.0727` | completed |
+| F1 | 8 | 768 | `0.003` | `7000` | `1.835` | `0.875468` | `-0.016684` | `2.432125` | `553.8` | `91.4` | `30.7` | `21.99` | mean CV `0.1619`, max-layer CV `0.8649`, max-layer max load `0.2527` | completed |
+| F2 | 10 | 1024 | `0.001` | `14099` | `3.696` | `0.824722` | `0.003097` | `2.268676` | `1175.7` | `184.8` | `47.4` | `23.49` | mean CV `0.0667`, max-layer max load `0.0733` | completed |
+
+Interpretation:
+The first-two-dense stem is not uniformly beneficial under the compute-optimal protocol. All-MoE with the other interventions wins at S75 and especially F1, but at F2 the selected two-dense full recipe remains better by `0.003097` BPB and is faster (`25.69%` vs `23.49%` MFU). The F1 all-MoE result is a large validation win but has one imbalanced router layer, so treat it as a high-signal result that deserves a repeat or layer-level diagnostic before making it the default. For F2+ scaling, keep the two-dense recipe as the current default unless the F1 behavior replicates and extends upward.
 
 ## Scale LR Follow-Up
 
